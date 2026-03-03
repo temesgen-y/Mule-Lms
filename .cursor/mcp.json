@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\Masresha\\AppData\\Roaming\\npm\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js",
+        "c:\\Users\\Masresha\\Desktop\\Mule Lms"
+      ]
+    },
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp"
+    }
+  }
+}
