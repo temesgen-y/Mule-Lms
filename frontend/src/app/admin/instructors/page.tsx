@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useCallback, useEffect } from 'react';
+import { toast } from 'sonner';
 
 type Instructor = {
   id: string;
@@ -28,9 +28,100 @@ const mockInstructors: Instructor[] = [
 const totalCount = 24;
 const pageSize = 10;
 
+const initialForm = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  department: '',
+  title: '',
+  specialization: '',
+  qualification: '',
+  bio: '',
+  officeHours: '',
+  employmentStatus: '',
+  profileStatus: 'PENDING',
+};
+
+const EMPLOYMENT_OPTIONS = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'ADJUNCT'];
+const PROFILE_STATUS_OPTIONS = ['PENDING', 'ACTIVE', 'INACTIVE'];
+
 export default function AdminInstructorsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(initialForm);
+  const [submitError, setSubmitError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const openModal = useCallback(() => {
+    setForm(initialForm);
+    setSubmitError('');
+    setModalOpen(true);
+  }, []);
+  const closeModal = useCallback(() => {
+    if (!isSubmitting) setModalOpen(false);
+  }, [isSubmitting]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError('');
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+    const email = form.email.trim().toLowerCase();
+    const department = form.department.trim();
+    if (!firstName || !lastName || !email || !department) {
+      setSubmitError('First name, last name, email, and department are required.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setSubmitError('Please enter a valid email address.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/instructors/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email,
+          department: department || undefined,
+          title: form.title.trim() || undefined,
+          specialization: form.specialization.trim() || undefined,
+          qualification: form.qualification.trim() || undefined,
+          bio: form.bio.trim() || undefined,
+          officeHours: form.officeHours.trim() || undefined,
+          employmentStatus: form.employmentStatus.trim() || undefined,
+          profileStatus: form.profileStatus.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setSubmitError(data.error || `Request failed (${res.status}).`);
+        return;
+      }
+      toast.success(data.message || 'Instructor invited. They will receive an email to set their password.');
+      setModalOpen(false);
+      setForm(initialForm);
+      // Optionally refresh list here when you load instructors from API
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, [modalOpen, closeModal]);
 
   const filtered = mockInstructors.filter(
     (i) =>
@@ -65,16 +156,203 @@ export default function AdminInstructorsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
-        <Link
-          href="/admin/instructors/add"
+        <button
+          type="button"
+          onClick={openModal}
           className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition shrink-0"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Add Instructor
-        </Link>
+        </button>
       </div>
+
+      {/* Add Instructor modal */}
+      {modalOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            aria-hidden
+            onClick={closeModal}
+          />
+          <div
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md max-h-[90vh] flex flex-col bg-white rounded-xl shadow-xl border border-gray-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-instructor-title"
+          >
+            <div className="flex items-center justify-between shrink-0 p-6 pb-0">
+              <h2 id="add-instructor-title" className="text-lg font-bold text-gray-900">
+                Add Instructor
+              </h2>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                disabled={isSubmitting}
+                className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 p-6">
+              <div className="space-y-4 overflow-y-auto pr-1 max-h-[60vh]">
+                {submitError && (
+                  <div className="rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2">
+                    {submitError}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="first-name" className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                    <input
+                      id="first-name"
+                      type="text"
+                      required
+                      value={form.firstName}
+                      onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="last-name" className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                    <input
+                      id="last-name"
+                      type="text"
+                      required
+                      value={form.lastName}
+                      onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    value={form.email}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
+                  <input
+                    id="department"
+                    type="text"
+                    required
+                    value={form.department}
+                    onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <input
+                    id="title"
+                    type="text"
+                    placeholder="e.g. Professor, Lecturer"
+                    value={form.title}
+                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="specialization" className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
+                  <input
+                    id="specialization"
+                    type="text"
+                    value={form.specialization}
+                    onChange={(e) => setForm((f) => ({ ...f, specialization: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="qualification" className="block text-sm font-medium text-gray-700 mb-1">Qualification</label>
+                  <input
+                    id="qualification"
+                    type="text"
+                    placeholder="e.g. Ph.D. Computer Science"
+                    value={form.qualification}
+                    onChange={(e) => setForm((f) => ({ ...f, qualification: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                  <textarea
+                    id="bio"
+                    rows={3}
+                    value={form.bio}
+                    onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="office-hours" className="block text-sm font-medium text-gray-700 mb-1">Office Hours</label>
+                  <input
+                    id="office-hours"
+                    type="text"
+                    placeholder="e.g. Mon/Wed 2-4pm"
+                    value={form.officeHours}
+                    onChange={(e) => setForm((f) => ({ ...f, officeHours: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="employment-status" className="block text-sm font-medium text-gray-700 mb-1">Employment Status</label>
+                  <select
+                    id="employment-status"
+                    value={form.employmentStatus}
+                    onChange={(e) => setForm((f) => ({ ...f, employmentStatus: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="">Select...</option>
+                    {EMPLOYMENT_OPTIONS.map((o) => (
+                      <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="profile-status" className="block text-sm font-medium text-gray-700 mb-1">Profile Status</label>
+                  <select
+                    id="profile-status"
+                    value={form.profileStatus}
+                    onChange={(e) => setForm((f) => ({ ...f, profileStatus: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    {PROFILE_STATUS_OPTIONS.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 mt-4 shrink-0 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  disabled={isSubmitting}
+                  className="px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition disabled:opacity-50 min-w-[120px]"
+                >
+                  {isSubmitting ? 'Adding...' : 'Add Instructor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
 
       {/* Table card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

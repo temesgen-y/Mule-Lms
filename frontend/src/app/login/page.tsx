@@ -4,8 +4,9 @@
  * Single sign-in page for all users (admin, instructor, student).
  * Redirect: admin → /admin/dashboard, instructor → /instructor/dashboard, student → /dashboard.
  * Role is read from public.users.role.
+ * Handles invite callback: when user lands with hash (type=invite), show "Set your password" then redirect.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { isAuthRetryableFetchError } from '@supabase/supabase-js';
@@ -13,6 +14,12 @@ import { createClient } from '@/lib/supabase/client';
 import { getUserRoleNames } from '@/lib/auth/get-user-roles';
 import { getHighestRole, getRedirectForRole, type RoleName } from '@/types/auth';
 import { toast } from 'sonner';
+
+function getHashParams() {
+  if (typeof window === 'undefined') return {};
+  const hash = window.location.hash?.replace(/^#/, '') || '';
+  return Object.fromEntries(new URLSearchParams(hash));
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +29,32 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inviteMode, setInviteMode] = useState(false);
+  const [inviteSessionReady, setInviteSessionReady] = useState(false);
+  const [invitePassword, setInvitePassword] = useState('');
+  const [inviteConfirmPassword, setInviteConfirmPassword] = useState('');
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+
+  useEffect(() => {
+    const params = getHashParams();
+    const type = params.type;
+    const accessToken = params.access_token;
+    const refreshToken = params.refresh_token;
+    if ((type === 'invite' || type === 'recovery') && accessToken && refreshToken) {
+      setInviteMode(true);
+      const supabase = createClient();
+      supabase.auth
+        .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(() => {
+          setInviteSessionReady(true);
+          setError('');
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        })
+        .catch((err) => {
+          setError(err?.message || 'Invalid or expired link. Please use the invite link from your email again.');
+        });
+    }
+  }, []);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +131,41 @@ export default function LoginPage() {
     setIsSubmitting(false);
   };
 
+  const handleSetPasswordFromInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invitePassword || invitePassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    if (invitePassword !== inviteConfirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setError('');
+    setInviteSubmitting(true);
+    const supabase = createClient();
+    const { error: updateError } = await supabase.auth.updateUser({ password: invitePassword });
+    if (updateError) {
+      setError(updateError.message || 'Failed to set password.');
+      setInviteSubmitting(false);
+      return;
+    }
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      setError('Session lost. Please use the invite link again.');
+      setInviteSubmitting(false);
+      return;
+    }
+    const roleNames = await getUserRoleNames(supabase, authUser.id);
+    const role = getHighestRole(roleNames as RoleName[]);
+    const redirectTo = role ? getRedirectForRole(role) : '/login';
+    toast.success('Password set. Redirecting…');
+    window.history.replaceState(null, '', window.location.pathname);
+    router.push(redirectTo);
+    router.refresh();
+    setInviteSubmitting(false);
+  };
+
   return (
     <main className="min-h-screen w-full flex flex-col md:flex-row flex-nowrap overflow-x-hidden">
       {/* Left: brand panel */}
@@ -129,6 +197,56 @@ export default function LoginPage() {
       {/* Right: form panel */}
       <div className="flex-1 min-w-0 min-h-0 flex items-center justify-center bg-[#faf9f7] py-8 px-6 sm:px-8">
         <div className="w-full max-w-[400px]">
+          {inviteMode ? (
+            <>
+              <h2 className="text-2xl font-bold text-gray-800">Set your password</h2>
+              <p className="mt-1 text-gray-500 text-sm">
+                {inviteSessionReady
+                  ? 'You were invited to MULE LMS. Choose a password to finish setting up your account.'
+                  : 'Preparing…'}
+              </p>
+              {!inviteSessionReady && (
+                <p className="mt-4 text-sm text-gray-400">Please wait while we verify your invite link.</p>
+              )}
+              <form onSubmit={handleSetPasswordFromInvite} className="mt-8 space-y-5" style={{ visibility: inviteSessionReady ? 'visible' : 'hidden' }}>
+                <div>
+                  <label htmlFor="invite-password" className="block text-sm font-medium text-gray-700 mb-1.5">New password</label>
+                  <input
+                    id="invite-password"
+                    type="password"
+                    placeholder="At least 6 characters"
+                    value={invitePassword}
+                    onChange={(e) => setInvitePassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-[#4c1d95] focus:border-[#4c1d95]"
+                    autoComplete="new-password"
+                    minLength={6}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="invite-confirm" className="block text-sm font-medium text-gray-700 mb-1.5">Confirm password</label>
+                  <input
+                    id="invite-confirm"
+                    type="password"
+                    placeholder="Repeat password"
+                    value={inviteConfirmPassword}
+                    onChange={(e) => setInviteConfirmPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-gray-800 placeholder:text-gray-400 focus:ring-2 focus:ring-[#4c1d95] focus:border-[#4c1d95]"
+                    autoComplete="new-password"
+                    minLength={6}
+                  />
+                </div>
+                {error && <p className="text-sm text-red-600">{error}</p>}
+                <button
+                  type="submit"
+                  disabled={inviteSubmitting}
+                  className="w-full py-3 rounded-lg bg-[#4c1d95] hover:bg-[#5b21b6] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold text-sm"
+                >
+                  {inviteSubmitting ? 'Setting password…' : 'Set password and continue'}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
           <h2 className="text-2xl font-bold text-gray-800">Welcome back</h2>
           <p className="mt-1 text-gray-500 text-sm">Sign in to your account to continue</p>
           <p className="mt-0.5 text-gray-400 text-xs">Redirect by role: admin → admin dashboard, instructor → instructor dashboard, student → student dashboard.</p>
@@ -222,6 +340,8 @@ export default function LoginPage() {
               Sign up
             </Link>
           </p>
+            </>
+          )}
         </div>
       </div>
     </main>

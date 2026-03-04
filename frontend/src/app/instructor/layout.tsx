@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getUserRoleNames } from '@/lib/auth/get-user-roles';
 import { getHighestRole, type RoleName } from '@/types/auth';
+import InstructorLayoutClient from './InstructorLayoutClient';
 
 export default async function InstructorLayout({
   children,
@@ -23,5 +24,24 @@ export default async function InstructorLayout({
     redirect('/unauthorized');
   }
 
-  return <>{children}</>;
+  const { data: appUser } = await supabase
+    .from('users')
+    .select('id, email, first_name, last_name')
+    .eq('auth_user_id', authUser.id)
+    .single();
+
+  const displayName = appUser
+    ? [appUser.first_name, appUser.last_name].filter(Boolean).join(' ').trim()
+    : '';
+  const instructorUser = {
+    id: appUser?.id ?? authUser.id,
+    name: (displayName || authUser.email) ?? 'Instructor',
+    email: (appUser?.email ?? authUser.email) ?? '',
+  };
+
+  return (
+    <InstructorLayoutClient user={instructorUser}>
+      {children}
+    </InstructorLayoutClient>
+  );
 }

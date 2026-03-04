@@ -92,3 +92,63 @@ There is no public “admin signup”. Admins are created via SQL or Dashboard, 
 - If you still see “Check your email to confirm”, double‑check step 2 and that you saved the Email provider settings.
 - If users are in `users` but not in `user_roles` / `student_profiles`, run **`backfill_user_roles_and_student_profiles.sql`** (see step 5).
 - To log in as admin, follow **step 6** (Option A: run insert_admin_user.sql with your email/password; or Option B: create a user then run promote_user_to_admin.sql).
+
+---
+
+## 8. Admin: Add Instructor (invite flow)
+
+Admins can invite instructors from **Admin Dashboard → Instructors → Add Instructor**. The instructor receives an email to set their password, then signs in on the same login page and is redirected to the Instructor Dashboard.
+
+**8a. Run the instructor_profiles migration (if you use the Add Instructor feature):**
+
+- **`migrations/20260303100000_instructor_profiles_add_title.sql`**  
+  - Adds optional `title` to `instructor_profiles`.
+
+**8b. Service role key (required for invite):**
+
+1. In Supabase Dashboard: **Settings** → **API** → copy the **service_role** key (secret).
+2. In your app `.env.local`, add:
+   - `SUPABASE_SERVICE_ROLE_KEY=<paste service_role key>`
+3. Never expose this key to the client; it is used only in the server API route that sends invites and inserts into `users` and `instructor_profiles`.
+
+**8c. Site URL and Redirect URLs (fix invite email link and text):**
+
+The invite email shows a URL and link. Both must point to your **frontend** (e.g. `http://localhost:3001`), not the backend.
+
+1. In Supabase Dashboard: **Authentication** → **URL Configuration**.
+2. Set **Site URL** to your app (frontend) origin, e.g.:
+   - `http://localhost:3001` (development)
+   - `https://yourdomain.com` (production)  
+   This is the URL shown in the email body (“You have been invited to create a user on …”) and used for redirects.
+3. Add to **Redirect URLs** (one per line):
+   - `http://localhost:3001/login`
+   - `https://yourdomain.com/login` (production)
+
+**8d. App URL in .env.local**
+
+Set your frontend URL so the invite API sends the correct redirect:
+
+- `NEXT_PUBLIC_APP_URL=http://localhost:3001` (or your production URL)
+
+**8e. Invite link must use ConfirmationURL:** If "Accept the invite" sends users to the login page with no set-password step, the email link is wrong. In **Authentication** → **Email Templates** → **Invite**, set the clickable link href to **`{{ .ConfirmationURL }}`** (not `{{ .SiteURL }}`). Example: `<a href="{{ .ConfirmationURL }}">Accept the invite</a>`. Save.
+
+**8e2. Customize invite email (optional):**
+
+To change the invite email from “create a user” to “set your password for MULE LMS”:
+
+1. In Supabase Dashboard: **Authentication** → **Email Templates**.
+2. Open the **Invite** template.
+3. Edit the subject/body (e.g. “Set your MULE LMS instructor password”) and save.
+
+**8f. Invite email not sending (required for real instructor invites):**
+
+By default, Supabase **only sends auth emails (including invite emails) to addresses that are in your project’s organization team**. Other addresses are not sent emails unless you configure custom SMTP.
+
+- **For testing:** Add the instructor’s email as a member of your Supabase organization: **Organization settings** → **Team** → invite that email. Then the default Supabase mailer can send to them (subject to rate limits, e.g. 2 emails/hour).
+- **For production (recommended):** Configure **custom SMTP** so invite emails can go to any instructor:
+  1. In Supabase Dashboard: **Authentication** → **SMTP** (or **Project Settings** → **Auth** → SMTP).
+  2. Enable custom SMTP and enter your provider’s settings (host, port, user, password, sender address).  
+     Use a transactional email service (e.g. [Resend](https://resend.com/docs/send-with-supabase-smtp), [SendGrid](https://www.twilio.com/docs/sendgrid), [Brevo](https://www.brevo.com), [Postmark](https://postmarkapp.com), AWS SES, etc.).
+  3. Save. After this, invite emails will be sent to any email address (within your SMTP rate limits).
+
+If you do not set up custom SMTP and the instructor’s email is not on the org team, the user may be created in Auth and in `users`/`instructor_profiles`, but **the invitation email will not be delivered**.
