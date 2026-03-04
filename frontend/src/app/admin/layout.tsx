@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getUserRoleNames } from '@/lib/auth/get-user-roles';
 import { getHighestRole, type RoleName } from '@/types/auth';
+import AdminShell from '@/components/admin/AdminShell';
 
 export default async function AdminLayout({
   children,
@@ -24,5 +25,5 @@ export default async function AdminLayout({
     redirect('/unauthorized');
   }
 
-  return <>{children}</>;
+  return <AdminShell>{children}</AdminShell>;
 }

@@ -68,13 +68,20 @@ It adds a STUDENT role and a student profile for every user in `public.users` wh
 
 ## 6. Log in as admin
 
-There is no public “admin signup”. To get an admin account:
+There is no public “admin signup”. Admins are created via SQL or Dashboard, then they use the **same login page** as students (email + password) and are redirected to **/admin/dashboard**.
 
-1. **Create a normal user** (e.g. sign up on the app signup page with the email you want for admin, or add a user in **Authentication → Users** in the Supabase Dashboard).
-2. **Promote that user to admin** by running **`migrations/promote_user_to_admin.sql`** in the Supabase SQL Editor.  
-   - Open the file and change `'admin@example.com'` to the user’s email, then run the script.  
-   - It sets `users.role = 'ADMIN'` and inserts a row into `admin_profiles`.
-3. **Log in** on the app login page with that email and password. You’ll be redirected to **/admin/dashboard**.
+**Option A – Insert admin entirely via SQL (recommended)**
+
+1. Run **`migrations/20260303000000_insert_admin_user.sql`** in the Supabase SQL Editor.
+2. At the top of the script, edit the variables: `v_email`, `v_password`, `v_first_name`, `v_last_name`.
+3. Run the query. It creates the user in `auth.users`, `auth.identities`, `public.users`, and `public.admin_profiles`.
+4. **Log in** on the app login page with that email and password. You’ll be redirected to **/admin/dashboard**.
+
+**Option B – Create user in Dashboard, then promote**
+
+1. Create a user (e.g. sign up on the app signup page, or add in **Authentication → Users** in the Supabase Dashboard with email + password).
+2. Run **`migrations/promote_user_to_admin.sql`** in the SQL Editor; change `'admin@example.com'` to that user’s email, then run.
+3. Log in on the app login page with that email and password.
 
 ---
 
@@ -84,4 +91,4 @@ There is no public “admin signup”. To get an admin account:
 - You should be signed in and redirected to the dashboard (no “confirm your email” step if step 2 is done).
 - If you still see “Check your email to confirm”, double‑check step 2 and that you saved the Email provider settings.
 - If users are in `users` but not in `user_roles` / `student_profiles`, run **`backfill_user_roles_and_student_profiles.sql`** (see step 5).
-- To log in as admin, follow **step 6** (promote a user to admin, then sign in).
+- To log in as admin, follow **step 6** (Option A: run insert_admin_user.sql with your email/password; or Option B: create a user then run promote_user_to_admin.sql).
