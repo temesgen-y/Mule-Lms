@@ -10,6 +10,7 @@ const SIDEBAR_ACTIVE = 'rgba(255,255,255,0.15)';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/admin/departments', label: 'Departments', icon: 'departments' },
   { href: '/admin/students', label: 'Students', icon: 'students' },
   { href: '/admin/instructors', label: 'Instructors', icon: 'instructors' },
   { href: '/admin/admins', label: 'Admins', icon: 'admins' },
@@ -35,6 +36,12 @@ function Icon({ name, className }: { name: string; className?: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+      );
+    case 'departments':
+      return (
+        <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         </svg>
       );
     case 'students':
