@@ -13,17 +13,24 @@ type Department = {
   isActive: boolean;
 };
 
+type InstructorOption = {
+  userId: string;
+  fullName: string;
+};
+
 const PAGE_SIZE = 10;
 
 const initialForm = {
   name: '',
   code: '',
   description: '',
+  headId: '',
   isActive: true,
 };
 
 export default function AdminDepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [instructors, setInstructors] = useState<InstructorOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -73,9 +80,29 @@ export default function AdminDepartmentsPage() {
     setLoading(false);
   }, []);
 
+  const fetchInstructors = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('users')
+      .select('id, first_name, last_name')
+      .eq('role', 'instructor')
+      .eq('status', 'active')
+      .order('first_name', { ascending: true });
+
+    if (data) {
+      setInstructors(
+        data.map((u: any) => ({
+          userId: u.id,
+          fullName: [u.first_name, u.last_name].filter(Boolean).join(' '),
+        }))
+      );
+    }
+  }, []);
+
   useEffect(() => {
     fetchDepartments();
-  }, [fetchDepartments]);
+    fetchInstructors();
+  }, [fetchDepartments, fetchInstructors]);
 
   const openModal = useCallback(() => {
     setForm(initialForm);
@@ -110,6 +137,7 @@ export default function AdminDepartmentsPage() {
       name,
       code,
       description: form.description.trim() || null,
+      head_id: form.headId || null,
       is_active: form.isActive,
     });
 
@@ -230,6 +258,23 @@ export default function AdminDepartmentsPage() {
                     onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
                   />
+                </div>
+                <div>
+                  <label htmlFor="dept-head" className="block text-sm font-medium text-gray-700 mb-1">Head of Department</label>
+                  <select
+                    id="dept-head"
+                    value={form.headId}
+                    onChange={(e) => setForm((f) => ({ ...f, headId: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  >
+                    <option value="">— None —</option>
+                    {instructors.map((i) => (
+                      <option key={i.userId} value={i.userId}>{i.fullName}</option>
+                    ))}
+                  </select>
+                  {instructors.length === 0 && (
+                    <p className="text-xs text-gray-500 mt-1">No active instructors found. Invite instructors first.</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <input
