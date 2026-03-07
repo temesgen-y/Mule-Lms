@@ -86,7 +86,6 @@ export default function AdminDepartmentsPage() {
       .from('users')
       .select('id, first_name, last_name')
       .eq('role', 'instructor')
-      .eq('status', 'active')
       .order('first_name', { ascending: true });
 
     if (data) {
