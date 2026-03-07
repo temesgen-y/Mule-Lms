@@ -83,16 +83,21 @@ export default function AdminDepartmentsPage() {
   const fetchInstructors = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase
-      .from('users')
-      .select('id, first_name, last_name')
-      .eq('role', 'instructor')
-      .order('first_name', { ascending: true });
+      .from('instructor_profiles')
+      .select(`
+        user_id,
+        users!fk_instructor_profiles_user (
+          first_name,
+          last_name
+        )
+      `)
+      .order('created_at', { ascending: true });
 
     if (data) {
       setInstructors(
-        data.map((u: any) => ({
-          userId: u.id,
-          fullName: [u.first_name, u.last_name].filter(Boolean).join(' '),
+        data.map((row: any) => ({
+          userId: row.user_id,
+          fullName: [row.users?.first_name, row.users?.last_name].filter(Boolean).join(' ') || '—',
         }))
       );
     }
