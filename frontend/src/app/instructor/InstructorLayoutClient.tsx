@@ -18,6 +18,8 @@ function getInitials(name: string): string {
 
 const mainNav = [
   { href: '/instructor/dashboard', label: 'Calendar', icon: 'calendar' },
+  { href: '/instructor/course-modules', label: 'Course Modules', icon: 'course-modules' },
+  { href: '/instructor/lessons', label: 'Lessons', icon: 'lessons' },
   { href: '/instructor/announcements', label: 'Announcements', icon: 'announcements' },
   { href: '/instructor/syllabus', label: 'Syllabus', icon: 'syllabus' },
   { href: '/instructor/gradebook', label: 'Gradebook', icon: 'gradebook' },
@@ -45,6 +47,19 @@ function NavIcon({ name }: { name: string }) {
       return (
         <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      );
+    case 'course-modules':
+      return (
+        <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      );
+    case 'lessons':
+      return (
+        <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       );
     case 'announcements':
