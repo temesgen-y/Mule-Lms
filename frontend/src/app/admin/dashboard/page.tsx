@@ -13,8 +13,10 @@ type Counts = {
   enrollments_completed: number;
   enrollments_dropped: number;
   enrollments_failed: number;
+  certificates_total: number;
   certificates_active: number;
   certificates_revoked: number;
+  admin_profiles_total: number;
   admin_profiles_active: number;
   admin_profiles_inactive: number;
 };
@@ -22,55 +24,65 @@ type Counts = {
 const EMPTY: Counts = {
   students: 0, instructors: 0, admins: 0, courses: 0,
   enrollments_active: 0, enrollments_completed: 0, enrollments_dropped: 0, enrollments_failed: 0,
-  certificates_active: 0, certificates_revoked: 0,
-  admin_profiles_active: 0, admin_profiles_inactive: 0,
+  certificates_total: 0, certificates_active: 0, certificates_revoked: 0,
+  admin_profiles_total: 0, admin_profiles_active: 0, admin_profiles_inactive: 0,
 };
 
 export default function AdminDashboardPage() {
-  const supabase = createClient();
   const [counts, setCounts] = useState<Counts>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [institutionName, setInstitutionName] = useState('MULE LMS');
 
   useEffect(() => {
     const load = async () => {
+      const supabase = createClient();
       const [
         { count: students },
         { count: instructors },
         { count: admins },
         { count: courses },
-        { data: enrollmentRows },
-        { data: certRows },
-        { data: adminProfileRows },
+        { count: enrActive },
+        { count: enrCompleted },
+        { count: enrDropped },
+        { count: enrFailed },
+        { count: certTotal },
+        { count: certRevoked },
+        { count: apTotal },
+        { count: apActive },
+        { count: apInactive },
         { data: settingsRow },
       ] = await Promise.all([
         supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'student'),
         supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'instructor'),
         supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'admin'),
         supabase.from('courses').select('id', { count: 'exact', head: true }),
-        supabase.from('enrollments').select('status'),
-        supabase.from('certificates').select('revoked_at'),
-        supabase.from('admin_profiles').select('profile_status'),
+        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
+        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'dropped'),
+        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
+        supabase.from('certificates').select('id', { count: 'exact', head: true }),
+        supabase.from('certificates').select('id', { count: 'exact', head: true }).not('revoked_at', 'is', null),
+        supabase.from('admin_profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('admin_profiles').select('id', { count: 'exact', head: true }).eq('profile_status', 'active'),
+        supabase.from('admin_profiles').select('id', { count: 'exact', head: true }).eq('profile_status', 'inactive'),
         supabase.from('institution_settings').select('institution_name').limit(1).single(),
       ]);
 
-      const enr = enrollmentRows ?? [];
-      const cert = certRows ?? [];
-      const ap = adminProfileRows ?? [];
-
       setCounts({
-        students: students ?? 0,
-        instructors: instructors ?? 0,
-        admins: admins ?? 0,
-        courses: courses ?? 0,
-        enrollments_active: enr.filter((r: any) => r.status === 'active').length,
-        enrollments_completed: enr.filter((r: any) => r.status === 'completed').length,
-        enrollments_dropped: enr.filter((r: any) => r.status === 'dropped').length,
-        enrollments_failed: enr.filter((r: any) => r.status === 'failed').length,
-        certificates_active: cert.filter((r: any) => !r.revoked_at).length,
-        certificates_revoked: cert.filter((r: any) => r.revoked_at).length,
-        admin_profiles_active: ap.filter((r: any) => r.profile_status === 'active').length,
-        admin_profiles_inactive: ap.filter((r: any) => r.profile_status === 'inactive').length,
+        students:               students    ?? 0,
+        instructors:            instructors ?? 0,
+        admins:                 admins      ?? 0,
+        courses:                courses     ?? 0,
+        enrollments_active:     enrActive   ?? 0,
+        enrollments_completed:  enrCompleted ?? 0,
+        enrollments_dropped:    enrDropped  ?? 0,
+        enrollments_failed:     enrFailed   ?? 0,
+        certificates_total:     certTotal   ?? 0,
+        certificates_active:    (certTotal ?? 0) - (certRevoked ?? 0),
+        certificates_revoked:   certRevoked ?? 0,
+        admin_profiles_total:   apTotal     ?? 0,
+        admin_profiles_active:  apActive    ?? 0,
+        admin_profiles_inactive: apInactive ?? 0,
       });
 
       if (settingsRow?.institution_name) setInstitutionName(settingsRow.institution_name);
@@ -161,7 +173,7 @@ export default function AdminDashboardPage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <div className={`text-2xl font-bold text-gray-900 ${loading ? skeleton : ''}`}>{loading ? '' : counts.certificates_active + counts.certificates_revoked}</div>
+              <div className={`text-2xl font-bold text-gray-900 ${loading ? skeleton : ''}`}>{loading ? '' : counts.certificates_total}</div>
               <div className="text-xs text-gray-500 mt-0.5">Total</div>
             </div>
             <div className="text-center">
@@ -196,7 +208,7 @@ export default function AdminDashboardPage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{loading ? '–' : counts.admin_profiles_active + counts.admin_profiles_inactive}</div>
+              <div className="text-2xl font-bold text-gray-900">{loading ? '–' : counts.admin_profiles_total}</div>
               <div className="text-xs text-gray-500 mt-0.5">Total</div>
             </div>
             <div className="text-center">
