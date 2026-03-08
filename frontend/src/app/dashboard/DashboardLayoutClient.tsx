@@ -75,8 +75,12 @@ export default function DashboardLayoutClient({
       .from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('id', notifId);
-    setNotifs(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+    setNotifs(prev => {
+      const updated = prev.map(n => n.id === notifId ? { ...n, is_read: true } : n);
+      setUnreadCount(updated.filter(n => !n.is_read).length);
+      setAnnouncementUnreadCount(updated.filter(n => !n.is_read && n.type === 'announcement').length);
+      return updated;
+    });
   };
 
   const handleLogout = async () => {
