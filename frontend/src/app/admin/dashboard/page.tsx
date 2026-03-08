@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 
 type Counts = {
   students: number;
@@ -35,57 +34,26 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     const load = async () => {
-      const supabase = createClient();
-      const [
-        { count: students },
-        { count: instructors },
-        { count: admins },
-        { count: courses },
-        { count: enrActive },
-        { count: enrCompleted },
-        { count: enrDropped },
-        { count: enrFailed },
-        { count: certTotal },
-        { count: certRevoked },
-        { count: apTotal },
-        { count: apActive },
-        { count: apInactive },
-        { data: settingsRow },
-      ] = await Promise.all([
-        supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'student'),
-        supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'instructor'),
-        supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'admin'),
-        supabase.from('courses').select('id', { count: 'exact', head: true }),
-        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
-        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'dropped'),
-        supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
-        supabase.from('certificates').select('id', { count: 'exact', head: true }),
-        supabase.from('certificates').select('id', { count: 'exact', head: true }).not('revoked_at', 'is', null),
-        supabase.from('admin_profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('admin_profiles').select('id', { count: 'exact', head: true }).eq('profile_status', 'active'),
-        supabase.from('admin_profiles').select('id', { count: 'exact', head: true }).eq('profile_status', 'inactive'),
-        supabase.from('institution_settings').select('institution_name').limit(1).single(),
-      ]);
-
+      const res = await fetch('/api/admin/dashboard-stats');
+      if (!res.ok) { setLoading(false); return; }
+      const data = await res.json();
       setCounts({
-        students:               students    ?? 0,
-        instructors:            instructors ?? 0,
-        admins:                 admins      ?? 0,
-        courses:                courses     ?? 0,
-        enrollments_active:     enrActive   ?? 0,
-        enrollments_completed:  enrCompleted ?? 0,
-        enrollments_dropped:    enrDropped  ?? 0,
-        enrollments_failed:     enrFailed   ?? 0,
-        certificates_total:     certTotal   ?? 0,
-        certificates_active:    (certTotal ?? 0) - (certRevoked ?? 0),
-        certificates_revoked:   certRevoked ?? 0,
-        admin_profiles_total:   apTotal     ?? 0,
-        admin_profiles_active:  apActive    ?? 0,
-        admin_profiles_inactive: apInactive ?? 0,
+        students:                data.students,
+        instructors:             data.instructors,
+        admins:                  data.admins,
+        courses:                 data.courses,
+        enrollments_active:      data.enrollments_active,
+        enrollments_completed:   data.enrollments_completed,
+        enrollments_dropped:     data.enrollments_dropped,
+        enrollments_failed:      data.enrollments_failed,
+        certificates_total:      data.certificates_total,
+        certificates_active:     data.certificates_active,
+        certificates_revoked:    data.certificates_revoked,
+        admin_profiles_total:    data.admin_profiles_total,
+        admin_profiles_active:   data.admin_profiles_active,
+        admin_profiles_inactive: data.admin_profiles_inactive,
       });
-
-      if (settingsRow?.institution_name) setInstitutionName(settingsRow.institution_name);
+      if (data.institution_name) setInstitutionName(data.institution_name);
       setLoading(false);
     };
     load();
