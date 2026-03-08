@@ -20,9 +20,9 @@ export async function GET() {
     { count: apInactive },
     { data: settingsRow },
   ] = await Promise.all([
-    supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'student'),
-    supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'instructor'),
-    supabase.from('users').select('id', { count: 'exact', head: true }).eq('role', 'admin'),
+    supabase.from('users').select('id', { count: 'exact', head: true }).ilike('role', 'student'),
+    supabase.from('users').select('id', { count: 'exact', head: true }).ilike('role', 'instructor'),
+    supabase.from('users').select('id', { count: 'exact', head: true }).ilike('role', 'admin'),
     supabase.from('courses').select('id', { count: 'exact', head: true }),
     supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('enrollments').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
