@@ -1,138 +1,506 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
-// Demo data for current class — replace with API data later
-const CURRENT_CLASSES = [
-  {
-    id: 'swe-520-0500',
-    topic: 'Topic 4 SWE-520-0500',
-    title: 'Advanced Software Engineering Fundamentals',
-    startDate: 'Dec 18, 2025',
-    endDate: 'Feb 18, 2026',
-    instructor: 'Curtis Thompson',
-    studentCount: 7,
-  },
-];
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-const PAST_CLASSES: Array<{ id: string; topic: string; title: string; instructor: string }> = [];
+type UserInfo = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  studentNo: string | null;
+  program: string | null;
+  degreeLevel: string | null;
+};
+
+type CourseCard = {
+  offeringId: string;
+  courseCode: string;
+  courseTitle: string;
+  sectionName: string;
+  instructor: string;
+  startDate: string;
+  endDate: string;
+};
+
+type Deadline = {
+  id: string;
+  title: string;
+  due_date: string;
+  offering_id: string;
+  courseCode: string;
+};
+
+type Announcement = {
+  id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  is_pinned: boolean;
+  offering_id: string | null;
+  courseCode: string;
+};
+
+type LiveSession = {
+  id: string;
+  title: string;
+  scheduled_at: string;
+  duration_mins: number;
+  platform: string;
+  join_url: string;
+  offering_id: string;
+  courseCode: string;
+};
+
+type HomeData = {
+  user: UserInfo;
+  activeCourseCount: number;
+  completedLessons: number;
+  deadlineCount: number;
+  unreadNotifCount: number;
+  courses: CourseCard[];
+  deadlines: Deadline[];
+  announcements: Announcement[];
+  liveSessions: LiveSession[];
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function fmt(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function greeting(name: string): string {
+  const h = new Date().getHours();
+  const salut = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  return `${salut}, ${name}! 👋`;
+}
+
+function daysUntil(dateStr: string): string {
+  const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
+  if (diff === 0) return 'Due today';
+  if (diff === 1) return 'Due tomorrow';
+  if (diff < 0) return 'Overdue';
+  return `Due in ${diff} days`;
+}
+
+function primaryInstructor(
+  instructors: Array<{ role: string; users: { first_name: string; last_name: string } | null }> | null
+): string {
+  if (!instructors || instructors.length === 0) return 'TBA';
+  const primary = instructors.find(i => i.role === 'primary') ?? instructors[0];
+  if (!primary.users) return 'TBA';
+  return `${primary.users.first_name} ${primary.users.last_name}`;
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export default function StudentHomePage() {
-  const [activeTab, setActiveTab] = useState<'current' | 'past'>('current');
+  const [data, setData] = useState<HomeData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const supabase = createClient();
+
+      // 1. Auth user
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) { setLoading(false); return; }
+
+      const { data: appUser } = await supabase
+        .from('users')
+        .select('id, first_name, last_name')
+        .eq('auth_user_id', authData.user.id)
+        .single();
+      if (!appUser) { setLoading(false); return; }
+
+      const userId = (appUser as { id: string; first_name: string | null; last_name: string | null }).id;
+      const firstName = (appUser as { first_name: string | null }).first_name ?? '';
+
+      // Student profile
+      const { data: studentProfile } = await supabase
+        .from('student_profiles')
+        .select('student_no, program, degree_level')
+        .eq('user_id', userId)
+        .single();
+
+      // 2. Active enrollments with nested data
+      const { data: enrollments } = await supabase
+        .from('enrollments')
+        .select(`
+          offering_id,
+          course_offerings!fk_enrollments_offering(
+            id, section_name, enrolled_count, status,
+            courses!fk_course_offerings_course(code, title),
+            academic_terms!fk_course_offerings_term(start_date, end_date),
+            course_instructors(role, users!fk_course_instructors_instructor(first_name, last_name))
+          )
+        `)
+        .eq('student_id', userId)
+        .eq('status', 'active');
+
+      const rows = (enrollments ?? []) as any[];
+      const activeCourses = rows.filter(r =>
+        ['upcoming', 'active'].includes(r.course_offerings?.status ?? '')
+      );
+      const activeOfferingIds = activeCourses.map(r => r.offering_id as string);
+
+      const courseCards: CourseCard[] = activeCourses.slice(0, 4).map(r => {
+        const o = r.course_offerings;
+        return {
+          offeringId:  o.id,
+          courseCode:  o.courses?.code ?? '',
+          courseTitle: o.courses?.title ?? '',
+          sectionName: o.section_name ?? '',
+          instructor:  primaryInstructor(o.course_instructors ?? []),
+          startDate:   fmt(o.academic_terms?.start_date),
+          endDate:     fmt(o.academic_terms?.end_date),
+        };
+      });
+
+      // 3. Upcoming deadlines (next 14 days)
+      const now = new Date().toISOString();
+      const in14 = new Date(Date.now() + 14 * 86400000).toISOString();
+
+      let deadlines: Deadline[] = [];
+      let deadlineCount = 0;
+      if (activeOfferingIds.length > 0) {
+        const { data: assignRows } = await supabase
+          .from('assignments')
+          .select('id, title, due_date, offering_id')
+          .in('offering_id', activeOfferingIds)
+          .eq('status', 'published')
+          .gte('due_date', now)
+          .lte('due_date', in14)
+          .order('due_date', { ascending: true })
+          .limit(5);
+
+        // Build offering → course code map
+        const codeMap: Record<string, string> = {};
+        activeCourses.forEach(r => { codeMap[r.offering_id] = r.course_offerings?.courses?.code ?? ''; });
+
+        deadlines = (assignRows ?? []).map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          due_date: a.due_date,
+          offering_id: a.offering_id,
+          courseCode: codeMap[a.offering_id] ?? '',
+        }));
+        deadlineCount = deadlines.length;
+      }
+
+      // 4. Recent announcements (course + global)
+      let announcements: Announcement[] = [];
+      if (activeOfferingIds.length > 0) {
+        const { data: annRows } = await supabase
+          .from('announcements')
+          .select('id, title, body, created_at, is_pinned, offering_id')
+          .in('offering_id', activeOfferingIds)
+          .order('is_pinned', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(4);
+        const codeMap: Record<string, string> = {};
+        activeCourses.forEach(r => { codeMap[r.offering_id] = r.course_offerings?.courses?.code ?? ''; });
+        announcements = (annRows ?? []).map((a: any) => ({
+          ...a,
+          courseCode: a.offering_id ? (codeMap[a.offering_id] ?? '') : 'Institution',
+        }));
+      }
+
+      // Global announcements (offering_id IS NULL)
+      const { data: globalAnns } = await supabase
+        .from('announcements')
+        .select('id, title, body, created_at, is_pinned, offering_id')
+        .is('offering_id', null)
+        .order('created_at', { ascending: false })
+        .limit(3);
+      const globalAnnsMapped = (globalAnns ?? []).map((a: any) => ({ ...a, courseCode: 'Institution' }));
+
+      // Merge, sort by pinned then date, deduplicate, take 4
+      const allAnns = [...announcements, ...globalAnnsMapped]
+        .sort((a, b) => {
+          if (b.is_pinned !== a.is_pinned) return b.is_pinned ? 1 : -1;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        })
+        .filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)
+        .slice(0, 4);
+
+      // 5. Upcoming live sessions
+      let liveSessions: LiveSession[] = [];
+      if (activeOfferingIds.length > 0) {
+        const { data: lsRows } = await supabase
+          .from('live_sessions')
+          .select('id, title, scheduled_at, duration_mins, platform, join_url, offering_id')
+          .in('offering_id', activeOfferingIds)
+          .in('status', ['scheduled'])
+          .gte('scheduled_at', now)
+          .order('scheduled_at', { ascending: true })
+          .limit(3);
+        const codeMap: Record<string, string> = {};
+        activeCourses.forEach(r => { codeMap[r.offering_id] = r.course_offerings?.courses?.code ?? ''; });
+        liveSessions = (lsRows ?? []).map((s: any) => ({
+          ...s,
+          courseCode: codeMap[s.offering_id] ?? '',
+        }));
+      }
+
+      // 6. Unread notifications count + completed lessons
+      const [notifRes, lessonRes] = await Promise.all([
+        supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('is_read', false),
+        supabase
+          .from('lesson_progress')
+          .select('id', { count: 'exact', head: true })
+          .eq('student_id', userId)
+          .eq('status', 'completed'),
+      ]);
+
+      setData({
+        user: {
+          id: userId,
+          first_name: (appUser as any).first_name,
+          last_name: (appUser as any).last_name,
+          studentNo: (studentProfile as any)?.student_no ?? null,
+          program: (studentProfile as any)?.program ?? null,
+          degreeLevel: (studentProfile as any)?.degree_level ?? null,
+        },
+        activeCourseCount: activeCourses.length,
+        completedLessons: lessonRes.count ?? 0,
+        deadlineCount,
+        unreadNotifCount: notifRes.count ?? 0,
+        courses: courseCards,
+        deadlines,
+        announcements: allAnns,
+        liveSessions,
+      });
+      setLoading(false);
+    };
+
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex-1 overflow-y-auto p-8">
+        <div className="max-w-5xl mx-auto animate-pulse space-y-6">
+          <div className="h-28 bg-gray-200 rounded-xl" />
+          <div className="grid grid-cols-3 gap-4">
+            {[1,2,3].map(i => <div key={i} className="h-24 bg-gray-200 rounded-xl" />)}
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            {[1,2,3,4].map(i => <div key={i} className="h-40 bg-gray-200 rounded-xl" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-gray-400">Unable to load dashboard.</p>
+      </div>
+    );
+  }
+
+  const firstName = data.user.first_name ?? 'Student';
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
-      {/* Title */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-2xl" aria-hidden>🏠</span>
-        <h1 className="text-2xl font-bold text-gray-900">Student Home</h1>
-      </div>
-      <p className="text-gray-600 text-sm mb-1">
-        Students will see their classes in Mule LMS three days before each class&apos;s start date.
-      </p>
-      <p className="text-gray-600 text-sm mb-6">
-        <Link href="/dashboard/schedule" className="text-[#0078d4] hover:underline">
-          Missing a class? View your full schedule.
-        </Link>
-      </p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
-      {/* Tabs - purple underline on active */}
-      <div className="flex gap-6 border-b border-gray-200 mb-6">
-        <button
-          type="button"
-          onClick={() => setActiveTab('current')}
-          className={`pb-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-            activeTab === 'current'
-              ? 'border-[#4c1d95] text-[#4c1d95]'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          CURRENT CLASSES ({CURRENT_CLASSES.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('past')}
-          className={`pb-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-            activeTab === 'past'
-              ? 'border-[#4c1d95] text-[#4c1d95]'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          PAST CLASSES ({PAST_CLASSES.length})
-        </button>
-      </div>
+        {/* 1 ── Welcome Banner */}
+        <div className="rounded-2xl bg-gradient-to-r from-[#4c1d95] to-[#7c3aed] text-white px-8 py-7">
+          <p className="text-2xl font-bold">{greeting(firstName)}</p>
+          <p className="text-white/75 text-sm mt-1">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3">
+            {data.user.studentNo && (
+              <p className="text-white/80 text-xs">Student No: <span className="font-semibold text-white">{data.user.studentNo}</span></p>
+            )}
+            {data.user.program && (
+              <p className="text-white/80 text-xs">Program: <span className="font-semibold text-white">{data.user.program}{data.user.degreeLevel ? ` · ${data.user.degreeLevel}` : ''}</span></p>
+            )}
+          </div>
+          <div className="flex gap-4 mt-5">
+            <Link
+              href="/dashboard/courses"
+              className="px-5 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white text-sm font-medium transition-colors"
+            >
+              My Courses →
+            </Link>
+            <Link
+              href="/dashboard/grades"
+              className="px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
+            >
+              View Grades →
+            </Link>
+          </div>
+        </div>
 
-      {/* Horizontal line above class cards - full width */}
-      <div className="w-screen relative left-1/2 -ml-[50vw] border-t border-gray-200" />
-      <div className="pt-4">
-      {/* Current classes - card with yellow top bar, gray topic, blue 7 Students link, GO TO CLASS centered */}
-      {activeTab === 'current' && (
-        <div className="space-y-4">
-          {CURRENT_CLASSES.length === 0 ? (
-            <p className="text-gray-500 text-sm">You have no current classes.</p>
+        {/* 2 ── Quick Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: 'Enrolled Courses',     value: data.activeCourseCount,  icon: '📚', color: 'text-indigo-600', href: '/dashboard/courses' },
+            { label: 'Lessons Completed',    value: data.completedLessons,   icon: '✅', color: 'text-green-600',  href: '/dashboard/courses' },
+            { label: 'Pending Assignments',  value: data.deadlineCount,      icon: '📝', color: 'text-amber-600',  href: '/dashboard/courses' },
+            { label: 'Unread Notifications', value: data.unreadNotifCount,   icon: '🔔', color: 'text-rose-600',   href: '/dashboard/notifications' },
+          ].map(s => (
+            <Link key={s.label} href={s.href}
+              className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 hover:shadow-md transition-shadow"
+            >
+              <span className="text-3xl">{s.icon}</span>
+              <div>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {/* 3 ── My Courses */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-gray-900">My Courses</h2>
+            <Link href="/dashboard/courses" className="text-sm text-[#4c1d95] hover:underline">View all →</Link>
+          </div>
+          {data.courses.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">
+              No active courses right now.
+            </div>
           ) : (
-            CURRENT_CLASSES.map((course) => (
-              <article
-                key={course.id}
-                className="bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden"
-              >
-                <div className="h-3 bg-[#FEF08A]" aria-hidden />
-                <div className="px-5 py-4">
-                  <p className="text-gray-600 text-sm mb-3">{course.topic}</p>
-                  <h2 className="text-lg font-bold text-gray-900 mb-4">{course.title}</h2>
-                  <div className="flex flex-wrap gap-5 text-sm text-gray-700 mb-4">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-gray-500" aria-hidden>📅</span>
-                      {course.startDate} - {course.endDate}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-gray-500" aria-hidden>🎓</span>
-                      {course.instructor}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-gray-500" aria-hidden>👥</span>
-                      <span className="text-[#1565C0] font-medium hover:underline cursor-pointer">
-                        {course.studentCount} Students
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex justify-center pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {data.courses.map(c => (
+                <div key={c.offeringId} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="h-2 bg-[#FEF08A]" />
+                  <div className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-block px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-medium">{c.courseCode}</span>
+                      <span className="text-xs text-gray-500">§{c.sectionName}</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-gray-900 leading-tight line-clamp-2">{c.courseTitle}</h3>
+                    <p className="text-xs text-gray-500 mt-2">🎓 {c.instructor}</p>
+                    <p className="text-xs text-gray-500">📅 {c.startDate} – {c.endDate}</p>
                     <Link
-                      href={`/dashboard/class/${course.id}`}
-                      className="inline-flex items-center justify-center px-8 py-3 rounded-lg bg-[#0078d4] hover:bg-[#106ebe] text-white font-semibold text-sm uppercase tracking-wide"
+                      href={`/dashboard/class/${c.offeringId}/t1`}
+                      className="mt-3 inline-flex items-center justify-center w-full py-1.5 rounded-lg bg-[#4c1d95] hover:bg-[#5b21b6] text-white text-xs font-semibold uppercase tracking-wide transition-colors"
                     >
-                      GO TO CLASS
+                      Go to Class
                     </Link>
                   </div>
                 </div>
-              </article>
-            ))
+              ))}
+            </div>
           )}
-        </div>
-      )}
+        </section>
 
-      {/* Past classes */}
-      {activeTab === 'past' && (
-        <div className="space-y-4">
-          {PAST_CLASSES.length === 0 ? (
-            <p className="text-gray-500 text-sm">You have no past classes.</p>
-          ) : (
-            PAST_CLASSES.map((course) => (
-              <article
-                key={course.id}
-                className="bg-white border border-gray-200 rounded-lg shadow-sm p-5"
-              >
-                <span className="inline-block px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium mb-2">
-                  {course.topic}
-                </span>
-                <h2 className="text-lg font-semibold text-gray-900">{course.title}</h2>
-                <p className="text-sm text-gray-600 mt-1">{course.instructor}</p>
-              </article>
-            ))
-          )}
+        {/* Bottom 3-column row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* 4 ── Upcoming Deadlines */}
+          <section className="lg:col-span-1">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-gray-900">Upcoming Deadlines</h2>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {data.deadlines.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-gray-400 text-center">No deadlines in the next 2 weeks. 🎉</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {data.deadlines.map(d => {
+                    const urgency = new Date(d.due_date).getTime() - Date.now() < 86400000 * 2;
+                    return (
+                      <li key={d.id} className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-1">{d.title}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{d.courseCode}</p>
+                          </div>
+                          <span className={`text-xs font-medium whitespace-nowrap ${urgency ? 'text-red-600' : 'text-amber-600'}`}>
+                            {daysUntil(d.due_date)}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </section>
+
+          {/* 5 ── Recent Announcements */}
+          <section className="lg:col-span-1">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-gray-900">Announcements</h2>
+              <Link href="/dashboard/announcements" className="text-xs text-[#4c1d95] hover:underline">View all →</Link>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {data.announcements.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-gray-400 text-center">No recent announcements.</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {data.announcements.map(a => (
+                    <li key={a.id} className="px-4 py-3">
+                      <div className="flex items-start gap-2">
+                        {a.is_pinned && <span className="text-amber-500 text-xs mt-0.5">📌</span>}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-1">{a.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{a.courseCode} · {fmt(a.created_at)}</p>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+
+          {/* 6 ── Upcoming Live Sessions */}
+          <section className="lg:col-span-1">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-gray-900">Live Sessions</h2>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {data.liveSessions.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-gray-400 text-center">No upcoming live sessions.</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {data.liveSessions.map(s => {
+                    const d = new Date(s.scheduled_at);
+                    return (
+                      <li key={s.id} className="px-4 py-3">
+                        <p className="text-sm font-medium text-gray-900 line-clamp-1">{s.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{s.courseCode}</p>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-xs text-gray-500">
+                            📅 {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {' '}{d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </p>
+                          <a
+                            href={s.join_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-[#4c1d95] hover:underline"
+                          >
+                            Join →
+                          </a>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </section>
         </div>
-      )}
+
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ type Lesson = {
 };
 
 type OfferingOption = { id: string; label: string };
+type ModuleOption = { id: string; label: string };
 
 const PAGE_SIZE = 10;
 const LESSON_TYPES = ['video', 'document', 'link', 'scorm'] as const;
@@ -41,6 +42,7 @@ const initialForm = {
   contentBody: '',
   durationMins: '',
   isVisible: true,
+  moduleId: '',
 };
 
 export default function InstructorLessonsPage() {
@@ -60,6 +62,9 @@ export default function InstructorLessonsPage() {
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [modules, setModules] = useState<ModuleOption[]>([]);
+  const [linkedLessonIds, setLinkedLessonIds] = useState<Set<string>>(new Set());
 
   // ─── Get current instructor's user id ────────────────────────────
   const getCurrentUserId = useCallback(async () => {
@@ -144,6 +149,18 @@ export default function InstructorLessonsPage() {
     if (error) {
       toast.error('Failed to load lessons.');
     } else {
+      const allLessonIds = (data ?? []).map((r: any) => r.id as string);
+      if (allLessonIds.length > 0) {
+        const { data: linkedData } = await supabase
+          .from('course_module_items')
+          .select('lesson_id')
+          .in('lesson_id', allLessonIds)
+          .not('lesson_id', 'is', null);
+        setLinkedLessonIds(new Set((linkedData ?? []).map((r: any) => r.lesson_id as string)));
+      } else {
+        setLinkedLessonIds(new Set());
+      }
+
       setLessons(
         (data ?? []).map((r: any) => {
           const o = r.course_offerings ?? {};
@@ -172,6 +189,20 @@ export default function InstructorLessonsPage() {
     fetchLessons();
   }, [fetchOfferings, fetchLessons]);
 
+  // Fetch modules when form offering changes (for the "Add to module" picker)
+  useEffect(() => {
+    if (!form.offeringId) { setModules([]); return; }
+    const supabase = createClient();
+    supabase
+      .from('course_modules')
+      .select('id, title, sort_order')
+      .eq('offering_id', form.offeringId)
+      .order('sort_order', { ascending: true })
+      .then(({ data }) => {
+        setModules((data ?? []).map((m: any) => ({ id: m.id, label: m.title })));
+      });
+  }, [form.offeringId]);
+
   // ─── Modal helpers ────────────────────────────────────────────────
   const openAddModal = useCallback(() => {
     setEditingId(null);
@@ -190,6 +221,7 @@ export default function InstructorLessonsPage() {
       contentBody: l.contentBody,
       durationMins: l.durationMins !== null ? String(l.durationMins) : '',
       isVisible: l.isVisible,
+      moduleId: '',
     });
     setSubmitError('');
     setModalOpen(true);
@@ -234,10 +266,17 @@ export default function InstructorLessonsPage() {
     };
 
     let error;
+    let newLessonId: string | null = null;
     if (editingId) {
       ({ error } = await supabase.from('lessons').update(payload).eq('id', editingId));
     } else {
-      ({ error } = await supabase.from('lessons').insert(payload));
+      const { data: inserted, error: insertError } = await supabase
+        .from('lessons')
+        .insert(payload)
+        .select('id')
+        .single();
+      error = insertError;
+      newLessonId = inserted?.id ?? null;
     }
 
     if (error) {
@@ -246,7 +285,30 @@ export default function InstructorLessonsPage() {
       return;
     }
 
-    toast.success(editingId ? 'Lesson updated.' : 'Lesson created.');
+    // If a module was selected (only on create), also add this lesson as a module item
+    if (!editingId && newLessonId && form.moduleId) {
+      const { error: itemError } = await supabase.from('course_module_items').insert({
+        module_id: form.moduleId,
+        offering_id: form.offeringId,
+        item_type: 'lesson',
+        lesson_id: newLessonId,
+        sort_order: 9999,
+        is_visible: true,
+        is_mandatory: false,
+      });
+      if (itemError) {
+        toast.warning('Lesson created, but failed to add to module: ' + itemError.message);
+      } else {
+        toast.success('Lesson created and added to module.');
+        setModalOpen(false);
+        setForm(initialForm);
+        fetchLessons();
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    toast.success(editingId ? 'Lesson updated.' : 'Lesson created. Remember to add it to a module so students can see it.');
     setModalOpen(false);
     setForm(initialForm);
     fetchLessons();
@@ -434,6 +496,33 @@ export default function InstructorLessonsPage() {
                   />
                 </div>
 
+                {/* Add to module (create only) */}
+                {!editingId && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-amber-800">
+                      Students only see lessons that are added to a module.
+                    </p>
+                    <div>
+                      <label htmlFor="ls-module" className="block text-sm font-medium text-gray-700 mb-1">
+                        Add to Module <span className="font-normal text-gray-400">(optional, recommended)</span>
+                      </label>
+                      <select id="ls-module" value={form.moduleId}
+                        onChange={(e) => setForm((f) => ({ ...f, moduleId: e.target.value }))}
+                        disabled={!form.offeringId}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                      >
+                        <option value="">— Skip for now —</option>
+                        {modules.map((m) => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                      {form.offeringId && modules.length === 0 && (
+                        <p className="text-xs text-gray-400 mt-1">No modules found for this offering. Create modules first.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Visible */}
                 <div className="flex items-center gap-3">
                   <input id="ls-visible" type="checkbox" checked={form.isVisible}
@@ -519,6 +608,11 @@ export default function InstructorLessonsPage() {
                       <div className="text-sm font-medium text-gray-900">{l.title}</div>
                       {l.contentUrl && (
                         <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{l.contentUrl}</div>
+                      )}
+                      {!linkedLessonIds.has(l.id) && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">
+                          Not in any module — students cannot see this
+                        </span>
                       )}
                     </td>
                     <td className="px-5 py-3">

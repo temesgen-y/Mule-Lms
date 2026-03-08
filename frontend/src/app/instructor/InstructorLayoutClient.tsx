@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -19,6 +19,7 @@ function getInitials(name: string): string {
 const mainNav = [
   { href: '/instructor/dashboard', label: 'Calendar', icon: 'calendar' },
   { href: '/instructor/course-modules', label: 'Course Modules', icon: 'course-modules' },
+  { href: '/instructor/module-items', label: 'Module Items', icon: 'module-items' },
   { href: '/instructor/lessons', label: 'Lessons', icon: 'lessons' },
   { href: '/instructor/lesson-materials', label: 'Lesson Materials', icon: 'lesson-materials' },
   { href: '/instructor/attachments', label: 'Attachments', icon: 'attachments' },
@@ -66,6 +67,12 @@ function NavIcon({ name }: { name: string }) {
       return (
         <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      );
+    case 'module-items':
+      return (
+        <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h10" />
         </svg>
       );
     case 'lessons':
@@ -189,6 +196,25 @@ export default function InstructorLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [classesOpen, setClassesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [announcementCount, setAnnouncementCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCount = async () => {
+      const supabase = createClient();
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) return;
+      const { data: userData } = await supabase
+        .from('users').select('id').eq('auth_user_id', authData.user.id).single();
+      if (!userData) return;
+      const { count } = await supabase
+        .from('announcements')
+        .select('id', { count: 'exact', head: true })
+        .eq('author_id', userData.id)
+        .eq('status', 'active');
+      setAnnouncementCount(count ?? 0);
+    };
+    fetchCount();
+  }, [pathname]);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -315,6 +341,7 @@ export default function InstructorLayoutClient({
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Main</div>
                 {mainNav.map((item) => {
                   const isActive = pathname === item.href;
+                  const isAnnouncements = item.href === '/instructor/announcements';
                   return (
                     <Link
                       key={item.href}
@@ -324,7 +351,12 @@ export default function InstructorLayoutClient({
                       }`}
                     >
                       <NavIcon name={item.icon} />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {isAnnouncements && announcementCount > 0 && (
+                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                          {announcementCount > 99 ? '99+' : announcementCount}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

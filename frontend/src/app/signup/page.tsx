@@ -5,7 +5,7 @@
  * Flow: Supabase Auth signUp → server action creates/updates users + student_profiles (no trigger or RPC required).
  * Requires "Confirm email" OFF in Supabase and RLS migration so inserts to users/student_profiles are allowed.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -17,28 +17,34 @@ import { toast } from 'sonner';
 
 const SELECT_STYLE =
   'w-full pl-3.5 pr-10 py-2.5 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-[#4c1d95] focus:border-[#4c1d95] bg-white appearance-none cursor-pointer';
-const DEGREE_LEVELS = [
-  "Associate's Degree",
-  "Bachelor's Degree",
-  "Master's Degree",
-  "Doctoral Degree",
-  "Certificate",
-];
-const PROGRAMS = [
-  'Business Administration',
-  'Education',
-  'Nursing',
-  'Computer Science',
-  'Psychology',
-  'Health Sciences',
-  'Other',
-];
 
 export default function SignUpPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [academicPrograms, setAcademicPrograms] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('departments')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => {
+        if (data) setDepartments(data);
+      });
+    supabase
+      .from('academic_programs')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => {
+        if (data) setAcademicPrograms(data);
+      });
+  }, []);
 
   const {
     register,
@@ -319,9 +325,9 @@ export default function SignUpPage() {
               }}
             >
               <option value="">Select your program</option>
-              {PROGRAMS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+              {departments.map((d) => (
+                <option key={d.id} value={d.name}>
+                  {d.name}
                 </option>
               ))}
             </select>
@@ -345,9 +351,9 @@ export default function SignUpPage() {
               }}
             >
               <option value="">Select degree level</option>
-              {DEGREE_LEVELS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
+              {academicPrograms.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
                 </option>
               ))}
             </select>

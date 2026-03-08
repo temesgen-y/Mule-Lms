@@ -4,10 +4,35 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 const PAGE_SIZE = 15;
 const STATUSES = ['active', 'completed', 'dropped', 'failed'] as const;
-const FINAL_GRADES = ['A', 'B', 'C', 'D', 'F', 'I'] as const;
 type EnrollmentStatus = typeof STATUSES[number];
+
+interface StudentOption {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  student_profiles: { student_no: string; profile_status: string } | null;
+}
+
+interface OfferingOption {
+  id: string;
+  section_name: string;
+  enrolled_count: number;
+  max_students: number;
+  status: string;
+  courses: { code: string; title: string } | null;
+  academic_terms: { term_name: string; year_start: number } | null;
+}
+
+interface EnrollFormState {
+  studentId: string;
+  offeringId: string;
+  status: EnrollmentStatus;
+}
 
 type Enrollment = {
   id: string;
@@ -25,67 +50,80 @@ type Enrollment = {
   offering_label: string;
 };
 
-type StudentOption = { id: string; name: string; email: string };
-type OfferingOption = { id: string; label: string };
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const blank = () => ({
-  student_id: '',
-  offering_id: '',
-  status: 'active' as EnrollmentStatus,
-  final_grade: '' as string,
-  final_score: '' as string,
+function offeringLabel(o: OfferingOption): string {
+  const code = o.courses?.code ?? '?';
+  const title = o.courses?.title ?? '?';
+  const term = o.academic_terms?.term_name ?? '?';
+  const year = o.academic_terms?.year_start ?? '';
+  const isFull = o.enrolled_count >= o.max_students;
+  return `${code} — ${title} | ${term} ${year} | Section ${o.section_name} (${o.enrolled_count}/${o.max_students}${isFull ? ' FULL' : ''})`;
+}
+
+function studentLabel(s: StudentOption): string {
+  const no = s.student_profiles?.student_no ?? 'no ID';
+  return `${s.first_name} ${s.last_name} (${no}) — ${s.email}`;
+}
+
+const blankForm = (): EnrollFormState => ({
+  studentId: '',
+  offeringId: '',
+  status: 'active',
 });
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function EnrollmentsPage() {
   const supabase = createClient();
 
+  // Enrollment list state
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [students, setStudents] = useState<StudentOption[]>([]);
-  const [offerings, setOfferings] = useState<OfferingOption[]>([]);
-
+  const [listLoading, setListLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterOffering, setFilterOffering] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null);
+
+  // Dropdown data state
+  const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsError, setStudentsError] = useState('');
+  const [availableStudents, setAvailableStudents] = useState<StudentOption[]>([]);
+
+  const [offerings, setOfferings] = useState<OfferingOption[]>([]);
+  const [offeringsLoading, setOfferingsLoading] = useState(false);
+  const [offeringsError, setOfferingsError] = useState('');
+
+  // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Enrollment | null>(null);
-  const [form, setForm] = useState(blank());
+  const [form, setForm] = useState<EnrollFormState>(blankForm());
+  const [formErrors, setFormErrors] = useState<{ student?: string; offering?: string }>({});
   const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null);
-  const [currentUserId, setCurrentUserId] = useState('');
 
-  const loadOptions = useCallback(async () => {
-    const { data: authData } = await supabase.auth.getUser();
-    if (authData.user) {
-      const { data: u } = await supabase.from('users').select('id').eq('auth_user_id', authData.user.id).single();
-      if (u) setCurrentUserId(u.id);
-    }
-    const { data: sData } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, email')
-      .eq('role', 'student')
-      .eq('status', 'active')
-      .order('first_name');
-    setStudents((sData ?? []).map((r: any) => ({
-      id: r.id,
-      name: `${r.first_name} ${r.last_name}`,
-      email: r.email,
-    })));
+  // Admin identity
+  const [adminUserId, setAdminUserId] = useState('');
 
-    const { data: oData } = await supabase
-      .from('course_offerings')
-      .select('id, section_name, courses!fk_course_offerings_course(code, title)')
-      .in('status', ['upcoming', 'active'])
-      .order('section_name');
-    setOfferings((oData ?? []).map((r: any) => ({
-      id: r.id,
-      label: `${r.courses?.code ?? ''} – ${r.section_name}`,
-    })));
+  // ── Load admin identity ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from('users')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single()
+        .then(({ data }) => { if (data) setAdminUserId((data as { id: string }).id); });
+    });
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // ── Load enrollments list ────────────────────────────────────────────────
+
+  const loadEnrollments = useCallback(async () => {
+    setListLoading(true);
     const { data, error } = await supabase
       .from('enrollments')
       .select(`
@@ -98,7 +136,7 @@ export default function EnrollmentsPage() {
       `)
       .order('enrolled_at', { ascending: false });
 
-    if (error) { toast.error(error.message); setLoading(false); return; }
+    if (error) { toast.error(error.message); setListLoading(false); return; }
 
     setEnrollments((data ?? []).map((r: any) => ({
       id: r.id,
@@ -117,69 +155,196 @@ export default function EnrollmentsPage() {
         ? `${r.course_offerings.courses?.code ?? ''} – ${r.course_offerings.section_name}`
         : '—',
     })));
-    setLoading(false);
+    setListLoading(false);
   }, []);
 
-  useEffect(() => { loadOptions(); load(); }, []);
+  // ── Load students dropdown data ──────────────────────────────────────────
+
+  const loadStudents = useCallback(async () => {
+    setStudentsLoading(true);
+    setStudentsError('');
+    const { data, error } = await supabase
+      .from('users')
+      .select(`
+        id, email, first_name, last_name,
+        student_profiles!user_id(student_no, profile_status)
+      `)
+      .in('role', ['STUDENT', 'student'])
+      .in('status', ['ACTIVE', 'active'])
+      .order('last_name', { ascending: true });
+
+    if (error) {
+      setStudentsError('Failed to load students');
+      setStudentsLoading(false);
+      return;
+    }
+    const mapped = (data ?? []).map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      student_profiles: r.student_profiles ?? null,
+    })) as StudentOption[];
+
+    setAllStudents(mapped);
+    setAvailableStudents(mapped);
+    setStudentsLoading(false);
+  }, []);
+
+  // ── Load offerings dropdown data ─────────────────────────────────────────
+
+  const loadOfferings = useCallback(async () => {
+    setOfferingsLoading(true);
+    setOfferingsError('');
+    const { data, error } = await supabase
+      .from('course_offerings')
+      .select(`
+        id, section_name, enrolled_count, max_students, status,
+        courses(code, title),
+        academic_terms(term_name, year_start)
+      `)
+      .in('status', ['upcoming', 'active'])
+      .order('section_name', { ascending: true });
+
+    if (error) {
+      setOfferingsError('Failed to load offerings');
+      setOfferingsLoading(false);
+      return;
+    }
+    setOfferings((data ?? []) as OfferingOption[]);
+    setOfferingsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadEnrollments();
+    loadStudents();
+    loadOfferings();
+  }, []);
+
+  // ── Filter out already-enrolled students when offering changes ───────────
+
+  const handleOfferingChange = useCallback(async (offeringId: string) => {
+    setForm(f => ({ ...f, offeringId, studentId: '' }));
+    setFormErrors(e => ({ ...e, offering: undefined }));
+
+    if (!offeringId) {
+      setAvailableStudents(allStudents);
+      return;
+    }
+
+    const { data: enrolled } = await supabase
+      .from('enrollments')
+      .select('student_id')
+      .eq('offering_id', offeringId)
+      .neq('status', 'dropped');
+
+    const enrolledIds = new Set((enrolled ?? []).map((e: any) => e.student_id));
+    setAvailableStudents(allStudents.filter(s => !enrolledIds.has(s.id)));
+  }, [allStudents]);
+
+  // ── Modal open/close ─────────────────────────────────────────────────────
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ ...blank(), offering_id: filterOffering });
+    setForm(blankForm());
+    setFormErrors({});
+    setAvailableStudents(allStudents);
     setShowModal(true);
   };
 
   const openEdit = (e: Enrollment) => {
     setEditing(e);
-    setForm({
-      student_id: e.student_id,
-      offering_id: e.offering_id,
-      status: e.status,
-      final_grade: e.final_grade ?? '',
-      final_score: e.final_score !== null ? String(e.final_score) : '',
-    });
+    setForm({ studentId: e.student_id, offeringId: e.offering_id, status: e.status });
+    setFormErrors({});
     setShowModal(true);
   };
 
+  const closeModal = () => { setShowModal(false); setEditing(null); };
+
+  // ── Submit ───────────────────────────────────────────────────────────────
+
   const handleSave = async () => {
-    if (!form.student_id) { toast.error('Select a student'); return; }
-    if (!form.offering_id) { toast.error('Select a course offering'); return; }
+    // Validate
+    const errors: { student?: string; offering?: string } = {};
+    if (!form.studentId) errors.student = 'Please select a student';
+    if (!form.offeringId) errors.offering = 'Please select a course offering';
+
+    if (!editing && form.offeringId) {
+      const selected = offerings.find(o => o.id === form.offeringId);
+      if (selected && selected.enrolled_count >= selected.max_students) {
+        errors.offering = 'This offering is at full capacity';
+      }
+    }
+
+    if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
+    setFormErrors({});
     setSaving(true);
 
-    const payload: any = {
-      student_id: form.student_id,
-      offering_id: form.offering_id,
-      status: form.status,
-      final_grade: form.final_grade || null,
-      final_score: form.final_score !== '' ? Number(form.final_score) : null,
-    };
-
     if (editing) {
-      const statusExtras: any = {};
-      if (form.status === 'completed' && !editing.completed_at) statusExtras.completed_at = new Date().toISOString();
-      if (form.status === 'dropped' && !editing.dropped_at) statusExtras.dropped_at = new Date().toISOString();
-      const { error } = await supabase.from('enrollments').update({ ...payload, ...statusExtras }).eq('id', editing.id);
+      // Edit mode: only status can change
+      const extras: any = {};
+      if (form.status === 'completed' && !editing.completed_at) extras.completed_at = new Date().toISOString();
+      if (form.status === 'dropped' && !editing.dropped_at) extras.dropped_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('enrollments')
+        .update({ status: form.status, ...extras })
+        .eq('id', editing.id);
+
       if (error) { toast.error(error.message); setSaving(false); return; }
       toast.success('Enrollment updated');
-    } else {
-      payload.enrolled_by = currentUserId;
-      const { error } = await supabase.from('enrollments').insert(payload);
-      if (error) {
-        if (error.message.includes('uq_enrollments')) {
-          toast.error('This student is already enrolled in that course offering.');
-        } else if (error.message.includes('chk_course_offerings_enrolled')) {
-          toast.error('Course offering is at maximum capacity.');
-        } else {
-          toast.error(error.message);
-        }
-        setSaving(false);
-        return;
-      }
-      toast.success('Student enrolled successfully');
+      setSaving(false);
+      closeModal();
+      loadEnrollments();
+      return;
     }
+
+    // New enrollment — no final_grade / final_score
+    const { data: newEnrollment, error } = await supabase
+      .from('enrollments')
+      .insert({
+        student_id:  form.studentId,
+        offering_id: form.offeringId,
+        enrolled_by: adminUserId || null,
+        status:      form.status,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      const msg = error.code === '23505'
+        ? 'This student is already enrolled in the selected offering.'
+        : 'Enrollment failed. Please try again.';
+      toast.error(msg);
+      setSaving(false);
+      return;
+    }
+
+    // Audit log (non-blocking)
+    if (adminUserId && newEnrollment) {
+      await supabase.from('audit_logs').insert({
+        actor_id:   adminUserId,
+        action:     'enrollment.create',
+        table_name: 'enrollments',
+        record_id:  (newEnrollment as any).id,
+        old_value:  null,
+        new_value:  {
+          student_id:  form.studentId,
+          offering_id: form.offeringId,
+          status:      form.status,
+        },
+      });
+    }
+
+    toast.success('Student has been successfully enrolled.');
     setSaving(false);
-    setShowModal(false);
-    load();
+    closeModal();
+    loadEnrollments();
+    // Refresh offerings so enrolled_count updates
+    loadOfferings();
   };
+
+  // ── Delete ───────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -187,10 +352,12 @@ export default function EnrollmentsPage() {
     if (error) { toast.error(error.message); return; }
     toast.success('Enrollment removed');
     setDeleteTarget(null);
-    load();
+    loadEnrollments();
   };
 
-  const statusBadge = (s: EnrollmentStatus) => {
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  const statusBadge = (s: string) => {
     const map: Record<string, string> = {
       active: 'bg-green-100 text-green-700',
       completed: 'bg-blue-100 text-blue-700',
@@ -208,8 +375,11 @@ export default function EnrollmentsPage() {
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
 
+  // ── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div className="max-w-6xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Enrollments</h1>
@@ -238,6 +408,7 @@ export default function EnrollmentsPage() {
         })}
       </div>
 
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
         <input
           type="search"
@@ -248,7 +419,7 @@ export default function EnrollmentsPage() {
         />
         <select value={filterOffering} onChange={e => { setFilterOffering(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
           <option value="">All Offerings</option>
-          {offerings.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          {offerings.map(o => <option key={o.id} value={o.id}>{offeringLabel(o)}</option>)}
         </select>
         <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
           <option value="">All Statuses</option>
@@ -256,7 +427,8 @@ export default function EnrollmentsPage() {
         </select>
       </div>
 
-      {loading ? (
+      {/* Table */}
+      {listLoading ? (
         <div className="text-center py-16 text-gray-500">Loading…</div>
       ) : (
         <>
@@ -310,38 +482,90 @@ export default function EnrollmentsPage() {
         </>
       )}
 
-      {/* Add/Edit Modal */}
+      {/* ── Add / Edit Modal ──────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-bold mb-4">{editing ? 'Edit Enrollment' : 'Enroll Student'}</h2>
             <div className="space-y-4">
+
+              {/* Student */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Student <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Student <span className="text-red-500">*</span>
+                </label>
                 <select
-                  value={form.student_id}
-                  onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}
+                  value={form.studentId}
+                  onChange={e => {
+                    setForm(f => ({ ...f, studentId: e.target.value }));
+                    setFormErrors(fe => ({ ...fe, student: undefined }));
+                  }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  disabled={!!editing}
+                  disabled={!!editing || studentsLoading}
                 >
-                  <option value="">Select student…</option>
-                  {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.email})</option>)}
+                  {studentsLoading ? (
+                    <option value="" disabled>Loading students…</option>
+                  ) : studentsError ? (
+                    <option value="" disabled>{studentsError}</option>
+                  ) : availableStudents.length === 0 ? (
+                    <option value="" disabled>No eligible students available</option>
+                  ) : (
+                    <>
+                      <option value="">Select student…</option>
+                      {availableStudents.map(s => (
+                        <option key={s.id} value={s.id}>{studentLabel(s)}</option>
+                      ))}
+                    </>
+                  )}
                 </select>
-                {editing && <p className="text-xs text-gray-400 mt-1">Student cannot be changed after enrollment.</p>}
+                {formErrors.student && (
+                  <p className="mt-1 text-xs text-red-600">{formErrors.student}</p>
+                )}
+                {editing && (
+                  <p className="text-xs text-gray-400 mt-1">Student cannot be changed after enrollment.</p>
+                )}
               </div>
+
+              {/* Course Offering */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Course Offering <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Course Offering <span className="text-red-500">*</span>
+                </label>
                 <select
-                  value={form.offering_id}
-                  onChange={e => setForm(f => ({ ...f, offering_id: e.target.value }))}
+                  value={form.offeringId}
+                  onChange={e => handleOfferingChange(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  disabled={!!editing}
+                  disabled={!!editing || offeringsLoading}
                 >
-                  <option value="">Select offering…</option>
-                  {offerings.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  {offeringsLoading ? (
+                    <option value="" disabled>Loading offerings…</option>
+                  ) : offeringsError ? (
+                    <option value="" disabled>{offeringsError}</option>
+                  ) : offerings.length === 0 ? (
+                    <option value="" disabled>No active offerings available</option>
+                  ) : (
+                    <>
+                      <option value="">Select offering…</option>
+                      {offerings.map(o => {
+                        const isFull = o.enrolled_count >= o.max_students;
+                        return (
+                          <option key={o.id} value={o.id} disabled={isFull}>
+                            {offeringLabel(o)}
+                          </option>
+                        );
+                      })}
+                    </>
+                  )}
                 </select>
-                {editing && <p className="text-xs text-gray-400 mt-1">Offering cannot be changed after enrollment.</p>}
+                {formErrors.offering && (
+                  <p className="mt-1 text-xs text-red-600">{formErrors.offering}</p>
+                )}
+                {editing && (
+                  <p className="text-xs text-gray-400 mt-1">Offering cannot be changed after enrollment.</p>
+                )}
               </div>
+
+              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
@@ -349,36 +573,28 @@ export default function EnrollmentsPage() {
                   onChange={e => setForm(f => ({ ...f, status: e.target.value as EnrollmentStatus }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
-                  {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                  <option value="active">Active</option>
+                  <option value="dropped">Dropped</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Final Grade</label>
-                  <select
-                    value={form.final_grade}
-                    onChange={e => setForm(f => ({ ...f, final_grade: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="">Not set</option>
-                    {FINAL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Final Score (0–100)</label>
-                  <input
-                    type="number" min={0} max={100} step={0.01}
-                    value={form.final_score}
-                    onChange={e => setForm(f => ({ ...f, final_score: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    placeholder="e.g. 85.50"
-                  />
-                </div>
-              </div>
+
             </div>
+
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>
-              <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-60">
+              <button
+                onClick={closeModal}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg border text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+              >
                 {saving ? 'Saving…' : editing ? 'Update' : 'Enroll'}
               </button>
             </div>
@@ -386,13 +602,14 @@ export default function EnrollmentsPage() {
         </div>
       )}
 
-      {/* Delete Confirm */}
+      {/* ── Delete Confirm ────────────────────────────────────────────────── */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <h2 className="text-lg font-bold mb-2">Remove Enrollment?</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Remove <strong>{deleteTarget.student_name}</strong> from <strong>{deleteTarget.offering_label}</strong>?
+              Remove <strong>{deleteTarget.student_name}</strong> from{' '}
+              <strong>{deleteTarget.offering_label}</strong>?
               This will delete associated grades and progress records.
             </p>
             <div className="flex justify-end gap-3">

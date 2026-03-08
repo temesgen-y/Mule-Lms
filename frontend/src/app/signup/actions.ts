@@ -50,8 +50,8 @@ export async function completeStudentSignup(
   const firstName = (authUser.user_metadata?.first_name ?? '').trim();
   const lastName = (authUser.user_metadata?.last_name ?? '').trim();
 
-  // Ensure a row exists in public.users (matches your schema: first_name, last_name, role, status)
-  const { data: upsertedUser, error: upsertError } = await supabase
+  // Create a pending users row. student_profiles is only created on admin approval.
+  const { error: upsertError } = await supabase
     .from('users')
     .upsert(
       {
@@ -60,49 +60,22 @@ export async function completeStudentSignup(
         first_name: firstName || null,
         last_name: lastName || null,
         role: 'STUDENT',
-        status: 'ACTIVE',
+        status: 'PENDING',
       },
       { onConflict: 'auth_user_id' }
-    )
-    .select('id')
-    .single();
+    );
 
-  if (upsertError || !upsertedUser) {
+  if (upsertError) {
     const hint =
-      upsertError?.code === '42501'
+      upsertError.code === '42501'
         ? ' Run the RLS migration: supabase/migrations/20260302000001_users_and_student_profiles_insert.sql'
-        : upsertError?.code === '42P01'
+        : upsertError.code === '42P01'
           ? ' Ensure the public.users table exists (run your base schema migrations first).'
           : '';
     return {
       success: false,
-      error:
-        (upsertError?.message || 'Could not create or find your user record.') + hint,
+      error: (upsertError.message || 'Could not create your user record.') + hint,
     };
-  }
-
-  const appUser = { id: upsertedUser.id };
-
-  const { error: profileError } = await supabase.from('student_profiles').upsert(
-    {
-      user_id: appUser.id,
-      student_no: null,
-      program: program || null,
-      degree_level: degreeLevel || null,
-      profile_status: 'ACTIVE',
-      created_by: appUser.id,
-    },
-    { onConflict: 'user_id' }
-  );
-
-  if (profileError) {
-    const message =
-      profileError.code === '42501'
-        ? 'Permission denied on student_profiles. Run supabase/migrations/20260302000001_users_and_student_profiles_insert.sql to allow inserts.'
-        : profileError.message?.includes('row-level security')
-          ? 'Access denied by security policy. Run the RLS migration for student_profiles (see SETUP.md).'
-          : profileError.message || 'Your profile could not be created. Please contact support.';
-    return { success: false, error: message };
   }
 
   return { success: true };
