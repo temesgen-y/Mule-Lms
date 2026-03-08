@@ -1,9 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+
+type Notif = {
+  id: string;
+  title: string;
+  body: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+  type: string | null;
+};
 
 const HEADER_BG = '#4c1d95';
 
@@ -196,25 +206,65 @@ export default function InstructorLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [classesOpen, setClassesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [announcementCount, setAnnouncementCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const loadNotifs = useCallback(async (uid: string) => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('notifications')
+      .select('id, title, body, link, is_read, created_at, type')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) {
+      const notifData = data as Notif[];
+      setNotifs(notifData.slice(0, 10));
+      setUnreadCount(notifData.filter(n => !n.is_read).length);
+      setAnnouncementUnreadCount(notifData.filter(n => !n.is_read && n.type === 'announcement').length);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchCount = async () => {
+    const init = async () => {
       const supabase = createClient();
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) return;
       const { data: userData } = await supabase
         .from('users').select('id').eq('auth_user_id', authData.user.id).single();
       if (!userData) return;
-      const { count } = await supabase
-        .from('announcements')
-        .select('id', { count: 'exact', head: true })
-        .eq('author_id', userData.id)
-        .eq('status', 'active');
-      setAnnouncementCount(count ?? 0);
+      const uid = (userData as { id: string }).id;
+      setUserId(uid);
+      loadNotifs(uid);
     };
-    fetchCount();
-  }, [pathname]);
+    init();
+  }, [loadNotifs]);
+
+  const markRead = async (notifId: string) => {
+    const supabase = createClient();
+    await supabase
+      .from('notifications')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('id', notifId);
+    setNotifs(prev => {
+      const updated = prev.map(n => n.id === notifId ? { ...n, is_read: true } : n);
+      setUnreadCount(updated.filter(n => !n.is_read).length);
+      setAnnouncementUnreadCount(updated.filter(n => !n.is_read && n.type === 'announcement').length);
+      return updated;
+    });
+  };
+
+  const fmtNotifTime = (ts: string) => {
+    const d = new Date(ts);
+    const now = new Date();
+    const diffH = (now.getTime() - d.getTime()) / 3600000;
+    if (diffH < 1) return `${Math.floor(diffH * 60)}m ago`;
+    if (diffH < 24) return `${Math.floor(diffH)}h ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -267,11 +317,57 @@ export default function InstructorLayoutClient({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className="p-2 rounded hover:bg-white/10" aria-label="Notifications">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => { setNotifOpen(o => !o); setUserMenuOpen(false); }}
+              className="relative p-2 rounded hover:bg-white/10"
+              aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            {notifOpen && (
+              <>
+                <div className="fixed inset-0 z-10" aria-hidden onClick={() => setNotifOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <span className="font-semibold text-sm text-gray-900">Notifications</span>
+                    <Link href="/instructor/notifications" onClick={() => setNotifOpen(false)} className="text-xs text-[#4c1d95] hover:underline">
+                      View all
+                    </Link>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
+                    {notifs.length === 0 ? (
+                      <p className="px-4 py-6 text-sm text-gray-400 text-center">No notifications</p>
+                    ) : notifs.map(n => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => { markRead(n.id); if (n.link) { setNotifOpen(false); router.push(n.link); } }}
+                        className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${!n.is_read ? 'bg-indigo-50' : ''}`}
+                      >
+                        <div className="flex items-start gap-2">
+                          {!n.is_read && <span className="mt-1.5 w-2 h-2 rounded-full bg-[#4c1d95] flex-shrink-0" />}
+                          <div className={!n.is_read ? '' : 'pl-4'}>
+                            <p className={`text-sm leading-snug ${!n.is_read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{n.title}</p>
+                            {n.body && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{n.body}</p>}
+                            <p className="text-xs text-gray-400 mt-1">{fmtNotifTime(n.created_at)}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <button type="button" className="p-2 rounded hover:bg-white/10" aria-label="Profile">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -352,9 +448,9 @@ export default function InstructorLayoutClient({
                     >
                       <NavIcon name={item.icon} />
                       <span className="flex-1">{item.label}</span>
-                      {isAnnouncements && announcementCount > 0 && (
-                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
-                          {announcementCount > 99 ? '99+' : announcementCount}
+                      {isAnnouncements && announcementUnreadCount > 0 && (
+                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-gray-900 text-[10px] font-bold">
+                          {announcementUnreadCount > 99 ? '99+' : announcementUnreadCount}
                         </span>
                       )}
                     </Link>
