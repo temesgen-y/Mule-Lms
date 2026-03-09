@@ -95,7 +95,7 @@ export default function StudentsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
 
       {/* ── Summary cards (unchanged) ─────────────────────────────────────── */}
       <div className="mb-6">
