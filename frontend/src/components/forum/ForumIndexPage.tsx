@@ -60,7 +60,11 @@ export default function ForumIndexPage({
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setThreads((data ?? []) as any[]);
+      const sorted = ((data ?? []) as any[]).sort((a: any, b: any) => {
+        if (b.is_pinned !== a.is_pinned) return b.is_pinned ? 1 : -1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+      setThreads(sorted);
     } catch (err: any) {
       toast.error(err?.message ?? 'Failed to load discussions.');
     } finally {
