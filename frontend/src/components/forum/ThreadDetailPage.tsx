@@ -42,9 +42,7 @@ export default function ThreadDetailPage({
   const [flatPosts, setFlatPosts] = useState<ForumPostFlat[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
-  const [topReplyBody, setTopReplyBody] = useState('');
-  const [submittingTopReply, setSubmittingTopReply] = useState(false);
-  const [showGearMenu, setShowGearMenu] = useState(false);
+const [showGearMenu, setShowGearMenu] = useState(false);
   const [togglingPin, setTogglingPin] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
   const gearMenuRef = useRef<HTMLDivElement>(null);
@@ -76,7 +74,7 @@ export default function ThreadDetailPage({
         users!fk_forum_posts_author(id, first_name, last_name, avatar_url, role)
       `)
       .eq('thread_id', threadId)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: false });
     if (error) { toast.error('Failed to load posts.'); return; }
     const flat = (data ?? []) as any[] as ForumPostFlat[];
     setFlatPosts(flat);
@@ -150,41 +148,7 @@ export default function ThreadDetailPage({
     return () => document.removeEventListener('mousedown', handler);
   }, [showGearMenu]);
 
-  // ── Top-level reply submit ────────────────────────────────────────────────
-  const handleTopReply = async () => {
-    const trimmed = topReplyBody.trim();
-    if (!trimmed) { toast.error('Reply cannot be empty.'); return; }
-    setSubmittingTopReply(true);
-    try {
-      const supabase = createClient();
-      const { error: postError } = await supabase.from('forum_posts').insert({
-        thread_id: threadId,
-        parent_id: null,
-        author_id: userId,
-        body: trimmed,
-        is_answer: false,
-        upvotes: 0,
-      });
-      if (postError) throw postError;
-
-      // Update reply_count + last_reply_at
-      const now = new Date().toISOString();
-      await supabase.from('forum_threads').update({
-        reply_count: (thread?.reply_count ?? 0) + 1,
-        last_reply_at: now,
-      }).eq('id', threadId);
-
-      toast.success('Reply posted.');
-      setTopReplyBody('');
-      await refreshAll();
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Failed to post reply.');
-    } finally {
-      setSubmittingTopReply(false);
-    }
-  };
-
-  // ── Pin / Unpin ───────────────────────────────────────────────────────────
+// ── Pin / Unpin ───────────────────────────────────────────────────────────
   const togglePin = async () => {
     if (!thread || togglingPin) return;
     setTogglingPin(true);
@@ -376,36 +340,6 @@ export default function ThreadDetailPage({
         </div>
       )}
 
-      {/* Top-level reply box */}
-      {!thread.is_locked && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 mt-2">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Post a Reply</h3>
-          <textarea
-            className="w-full border border-gray-300 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent leading-relaxed"
-            rows={4}
-            placeholder="Write your reply… (be respectful and constructive)"
-            value={topReplyBody}
-            onChange={e => setTopReplyBody(e.target.value)}
-            disabled={submittingTopReply}
-            style={{ maxHeight: '9rem' }}
-            onInput={e => {
-              const el = e.currentTarget;
-              el.style.height = 'auto';
-              el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
-            }}
-          />
-          <div className="flex justify-end mt-3">
-            <button
-              type="button"
-              onClick={handleTopReply}
-              disabled={submittingTopReply || !topReplyBody.trim()}
-              className="px-5 py-2 text-sm rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-700 disabled:opacity-50 transition-colors"
-            >
-              {submittingTopReply ? 'Posting…' : 'Post Reply'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
