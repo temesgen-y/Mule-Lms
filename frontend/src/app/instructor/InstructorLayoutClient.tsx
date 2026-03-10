@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
 
 type Notif = {
   id: string;
@@ -27,6 +28,7 @@ function getInitials(name: string): string {
 }
 
 const mainNav = [
+  { href: '/instructor/messages', label: 'Messages', icon: 'messages' },
   { href: '/instructor/dashboard', label: 'Calendar', icon: 'calendar' },
   { href: '/instructor/course-modules', label: 'Course Modules', icon: 'course-modules' },
   { href: '/instructor/module-items', label: 'Module Items', icon: 'module-items' },
@@ -67,6 +69,12 @@ const institutionResources = [
 function NavIcon({ name }: { name: string }) {
   const c = 'w-5 h-5 shrink-0';
   switch (name) {
+    case 'messages':
+      return (
+        <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      );
     case 'calendar':
       return (
         <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,6 +219,7 @@ export default function InstructorLayoutClient({
   const [unreadCount, setUnreadCount] = useState(0);
   const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
+  const unreadMsgCount = useUnreadMessageCount(userId);
 
   const loadNotifs = useCallback(async (uid: string) => {
     const supabase = createClient();
@@ -307,12 +316,17 @@ export default function InstructorLayoutClient({
             </button>
             <Link
               href="/instructor/messages"
-              className="flex items-center gap-1 px-3 py-1.5 rounded hover:bg-white/10 text-sm"
+              className="relative flex items-center gap-1 px-3 py-1.5 rounded hover:bg-white/10 text-sm"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
               MESSAGES
+              {unreadMsgCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-blue-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
+                </span>
+              )}
             </Link>
           </div>
         </div>
@@ -438,6 +452,7 @@ export default function InstructorLayoutClient({
                 {mainNav.map((item) => {
                   const isActive = pathname === item.href;
                   const isAnnouncements = item.href === '/instructor/announcements';
+                  const isMessages = item.href === '/instructor/messages';
                   return (
                     <Link
                       key={item.href}
@@ -451,6 +466,11 @@ export default function InstructorLayoutClient({
                       {isAnnouncements && announcementUnreadCount > 0 && (
                         <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-gray-900 text-[10px] font-bold">
                           {announcementUnreadCount > 99 ? '99+' : announcementUnreadCount}
+                        </span>
+                      )}
+                      {isMessages && unreadMsgCount > 0 && (
+                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold">
+                          {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
                         </span>
                       )}
                     </Link>

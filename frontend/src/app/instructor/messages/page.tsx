@@ -3,10 +3,10 @@
 import { Suspense } from 'react';
 import MessagesPage from '@/components/messages/MessagesPage';
 
-export default function StudentMessagesPage() {
+export default function InstructorMessagesPage() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-gray-400">Loading…</div>}>
-      <MessagesPage role="student" />
+      <MessagesPage role="instructor" />
     </Suspense>
   );
 }

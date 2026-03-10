@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ClassSidebarProvider, useClassSidebar } from './ClassSidebarContext';
 import { createClient } from '@/lib/supabase/client';
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
 
 export type DashboardUser = { id: string; name: string; email: string; role: string };
 
@@ -140,6 +141,7 @@ function InnerLayout({
   children: React.ReactNode;
 }) {
   const isClassView = !!pathname?.includes('/dashboard/class');
+  const unreadMsgCount = useUnreadMessageCount(user.id);
   const headerPurple = true; // Always purple, matching Halo Learn style
   const { toggle: toggleClassSidebar } = useClassSidebar();
 
@@ -217,13 +219,18 @@ function InnerLayout({
             {/* MESSAGES button */}
             <Link
               href="/dashboard/messages"
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded bg-white/15 hover:bg-white/25 text-white text-sm font-semibold transition-colors border border-white/20"
+              className="relative hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded bg-white/15 hover:bg-white/25 text-white text-sm font-semibold transition-colors border border-white/20"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                 <path d="M3.505 2.365A41.369 41.369 0 0 1 9 2c1.863 0 3.697.124 5.495.365 1.247.167 2.18 1.108 2.435 2.268a4.45 4.45 0 0 0-.577-.069 43.141 43.141 0 0 0-4.706 0C9.229 4.696 7.5 6.727 7.5 8.998v2.24c0 1.413.67 2.735 1.76 3.562l-2.98 2.98A.75.75 0 0 1 5 17.25v-3.443c-.501-.048-1-.106-1.495-.172C2.033 13.438 1 12.162 1 10.72V5.28c0-1.441 1.033-2.717 2.505-2.914Z" />
                 <path d="M14 6c-.762 0-1.52.02-2.271.059C10.343 6.13 9.5 7.209 9.5 8.998v2.24c0 1.946 1.048 3.032 2.229 3.303.327.076.66.13.998.163a.75.75 0 0 1 .681.753v1.268l1.72-1.72a.75.75 0 0 1 .577-.22 36.92 36.92 0 0 0 1.3-.042c1.372-.065 2.495-1.142 2.495-2.503v-2.24C19.5 7.21 18.657 6.13 17.271 6.06 16.518 6.02 15.76 6 15 6h-1Z" />
               </svg>
               MESSAGES
+              {unreadMsgCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-blue-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
+                </span>
+              )}
             </Link>
           </div>
 
@@ -386,6 +393,11 @@ function InnerLayout({
                     {item.href === '/dashboard/announcements' && announcementUnreadCount > 0 && (
                       <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-amber-300 text-gray-900' : 'bg-amber-400 text-gray-900'}`}>
                         {announcementUnreadCount > 9 ? '9+' : announcementUnreadCount}
+                      </span>
+                    )}
+                    {item.href === '/dashboard/messages' && unreadMsgCount > 0 && (
+                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>
+                        {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
                       </span>
                     )}
                   </Link>
