@@ -1,14 +1,14 @@
 'use client';
 
-import { Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import ForumIndexPage from '@/components/forum/ForumIndexPage';
+import ThreadDetailPage from '@/components/forum/ThreadDetailPage';
 
-export default function StudentForumsPage() {
+export default function StudentThreadPage() {
   const params = useParams();
   const offeringId = params?.id as string;
+  const threadId = params?.threadId as string;
   const router = useRouter();
   const [userId, setUserId] = useState('');
 
@@ -27,20 +27,17 @@ export default function StudentForumsPage() {
     init();
   }, []);
 
-  if (!offeringId || !userId) {
+  if (!offeringId || !threadId || !userId) {
     return <div className="p-8 text-gray-400 text-sm">Loading...</div>;
   }
 
   return (
-    <Suspense fallback={<div className="p-8 text-gray-400">Loading...</div>}>
-      <ForumIndexPage
-        offeringId={offeringId}
-        role="student"
-        userId={userId}
-        onOpenThread={(threadId) =>
-          router.push(`/dashboard/class/${offeringId}/forums/${threadId}`)
-        }
-      />
-    </Suspense>
+    <ThreadDetailPage
+      offeringId={offeringId}
+      threadId={threadId}
+      role="student"
+      userId={userId}
+      onBack={() => router.push(`/dashboard/class/${offeringId}/forums`)}
+    />
   );
 }
