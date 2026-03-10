@@ -86,12 +86,18 @@ export default function CreateGroupModal({ userId, onCreated, onClose }: Props) 
       return;
     }
 
-    await supabase.from('study_group_members').insert({
+    const { error: mErr } = await supabase.from('study_group_members').insert({
       group_id: (group as { id: string; name: string }).id,
       student_id: userId,
       role: 'owner',
       status: 'active',
     });
+
+    if (mErr) {
+      setError(mErr.message);
+      setSubmitting(false);
+      return;
+    }
 
     setSubmitting(false);
     onCreated(group as { id: string; name: string });

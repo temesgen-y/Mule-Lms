@@ -16,51 +16,76 @@ export function useStudyGroups(userId: string | null) {
     setError(null);
     const supabase = createClient();
 
-    const { data: allGroups, error: groupsErr } = await supabase
-      .from('study_groups')
-      .select(`
-        id, name, description, is_active,
-        created_by, created_at, updated_at, offering_id,
-        course_offerings (
-          courses ( code, title )
-        ),
-        study_group_members (
-          id, student_id, role, status,
-          users!fk_sgm_student ( id, first_name, last_name, avatar_url )
-        )
-      `)
-      .eq('is_active', true)
-      .order('updated_at', { ascending: false });
+    // ── Step 1: get the group IDs the user is actively a member of ──────────
+    const { data: memberships, error: memErr } = await supabase
+      .from('study_group_members')
+      .select('group_id')
+      .eq('student_id', userId)
+      .eq('status', 'active');
 
-    if (groupsErr) {
-      setError(groupsErr.message);
-      setLoading(false);
-      return;
+    if (memErr) { setError(memErr.message); setLoading(false); return; }
+
+    const activeGroupIds = (memberships ?? []).map((m: { group_id: string }) => m.group_id);
+
+    // ── Step 2: fetch those groups (no FK-disambiguation needed here) ────────
+    let mine: StudyGroup[] = [];
+    if (activeGroupIds.length > 0) {
+      const { data: groupsData, error: gErr } = await supabase
+        .from('study_groups')
+        .select(`
+          id, name, description, is_active,
+          created_by, created_at, updated_at, offering_id,
+          course_offerings ( courses ( code, title ) ),
+          study_group_members ( id, student_id, role, status )
+        `)
+        .in('id', activeGroupIds)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false });
+
+      if (gErr) { setError(gErr.message); setLoading(false); return; }
+      mine = (groupsData ?? []) as StudyGroup[];
     }
-
-    const mine = ((allGroups ?? []) as StudyGroup[]).filter(g =>
-      g.study_group_members?.some(
-        m => m.student_id === userId && m.status === 'active'
-      )
-    );
     setMyGroups(mine);
 
+    // ── Step 3: pending invitations ──────────────────────────────────────────
     const { data: invites, error: invErr } = await supabase
       .from('study_group_members')
       .select(`
         id, group_id, role, status, invited_by, joined_at,
         study_groups (
           id, name, offering_id,
-          course_offerings (
-            courses ( code, title )
-          )
-        ),
-        inviter:users!fk_sgm_invited_by ( first_name, last_name )
+          course_offerings ( courses ( code, title ) )
+        )
       `)
       .eq('student_id', userId)
       .eq('status', 'invited');
 
-    if (!invErr) setInvitations((invites ?? []) as unknown as StudyGroupInvitation[]);
+    if (invErr) { setLoading(false); return; }
+
+    // ── Step 4: fetch inviter names separately (avoids FK ambiguity) ─────────
+    const inviterIds = [...new Set(
+      (invites ?? [])
+        .map((i: { invited_by: string | null }) => i.invited_by)
+        .filter(Boolean) as string[]
+    )];
+
+    const inviterMap: Record<string, { first_name: string; last_name: string }> = {};
+    if (inviterIds.length > 0) {
+      const { data: inviters } = await supabase
+        .from('users')
+        .select('id, first_name, last_name')
+        .in('id', inviterIds);
+      for (const u of inviters ?? []) {
+        const row = u as { id: string; first_name: string; last_name: string };
+        inviterMap[row.id] = { first_name: row.first_name, last_name: row.last_name };
+      }
+    }
+
+    const mapped = (invites ?? []).map((i: any) => ({
+      ...i,
+      inviter: i.invited_by ? (inviterMap[i.invited_by] ?? null) : null,
+    }));
+    setInvitations(mapped as StudyGroupInvitation[]);
     setLoading(false);
   }, [userId]);
 
@@ -81,12 +106,13 @@ export function useStudyGroups(userId: string | null) {
       .single();
     if (gErr) throw new Error(gErr.message);
 
-    await supabase.from('study_group_members').insert({
+    const { error: mErr } = await supabase.from('study_group_members').insert({
       group_id: (group as StudyGroup).id,
       student_id: userId,
       role: 'owner',
       status: 'active',
     });
+    if (mErr) throw new Error(mErr.message);
 
     await loadGroups();
     return group as StudyGroup;

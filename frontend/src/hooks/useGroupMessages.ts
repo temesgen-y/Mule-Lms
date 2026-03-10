@@ -29,7 +29,7 @@ export function useGroupMessages(groupId: string | null, userId: string | null) 
       .from('study_group_messages')
       .select(`
         id, group_id, sender_id, body, is_pinned, created_at,
-        users!fk_sgmsg_sender ( id, first_name, last_name, avatar_url ),
+        users ( id, first_name, last_name, avatar_url ),
         study_group_attachments (
           id, attachment_id,
           attachments ( file_name, file_url, mime_type, size_kb )
@@ -50,7 +50,7 @@ export function useGroupMessages(groupId: string | null, userId: string | null) 
       .from('study_group_messages')
       .select(`
         id, group_id, sender_id, body, is_pinned, created_at,
-        users!fk_sgmsg_sender ( id, first_name, last_name, avatar_url ),
+        users ( id, first_name, last_name, avatar_url ),
         study_group_attachments (
           id, attachment_id,
           attachments ( file_name, file_url, mime_type, size_kb )

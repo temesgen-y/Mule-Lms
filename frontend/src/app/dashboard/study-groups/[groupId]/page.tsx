@@ -235,7 +235,7 @@ export default function StudyGroupChatPage() {
           ),
           study_group_members (
             id, student_id, role, status, invited_by, joined_at,
-            users!fk_sgm_student ( id, first_name, last_name, avatar_url )
+            users!student_id ( id, first_name, last_name, avatar_url )
           )
         `)
         .eq('id', groupId)
