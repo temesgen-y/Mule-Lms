@@ -43,8 +43,14 @@ export default async function DashboardLayout({
     role: 'student',
   };
 
+  const { data: settings } = await supabase
+    .from('institution_settings')
+    .select('features')
+    .single();
+  const studyGroupsEnabled = !!((settings?.features as Record<string, unknown>)?.study_groups ?? false);
+
   return (
-    <DashboardLayoutClient user={dashboardUser}>
+    <DashboardLayoutClient user={dashboardUser} studyGroupsEnabled={studyGroupsEnabled}>
       {children}
     </DashboardLayoutClient>
   );

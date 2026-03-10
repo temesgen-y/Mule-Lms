@@ -6,8 +6,11 @@ import Link from 'next/link';
 import { ClassSidebarProvider, useClassSidebar } from './ClassSidebarContext';
 import { createClient } from '@/lib/supabase/client';
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount';
+import { useUnreadGroups } from '@/hooks/useUnreadGroups';
 
 export type DashboardUser = { id: string; name: string; email: string; role: string };
+
+const STUDY_GROUPS_NAV = { href: '/dashboard/study-groups', label: 'Study Groups', icon: '👥', exact: false };
 
 type Notif = {
   id: string;
@@ -37,9 +40,11 @@ function getInitials(name: string): string {
 
 export default function DashboardLayoutClient({
   user,
+  studyGroupsEnabled = false,
   children,
 }: {
   user: DashboardUser;
+  studyGroupsEnabled?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -97,6 +102,7 @@ export default function DashboardLayoutClient({
     <ClassSidebarProvider>
       <InnerLayout
         user={user}
+        studyGroupsEnabled={studyGroupsEnabled}
         pathname={pathname}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -120,12 +126,13 @@ export default function DashboardLayoutClient({
 }
 
 function InnerLayout({
-  user, pathname, sidebarOpen, setSidebarOpen,
+  user, studyGroupsEnabled, pathname, sidebarOpen, setSidebarOpen,
   userMenuOpen, setUserMenuOpen, helpOpen, setHelpOpen,
   notifOpen, setNotifOpen, notifs, unreadCount, announcementUnreadCount, markRead, handleLogout, closeAll,
   children,
 }: {
   user: DashboardUser;
+  studyGroupsEnabled: boolean;
   pathname: string | null;
   sidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
@@ -142,6 +149,7 @@ function InnerLayout({
 }) {
   const isClassView = !!pathname?.includes('/dashboard/class');
   const unreadMsgCount = useUnreadMessageCount(user.id);
+  const unreadGroupCount = useUnreadGroups(studyGroupsEnabled ? user.id : null);
   const headerPurple = true; // Always purple, matching Halo Learn style
   const { toggle: toggleClassSidebar } = useClassSidebar();
 
@@ -371,7 +379,10 @@ function InnerLayout({
         {!isClassView && sidebarOpen && (
           <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
             <nav className="py-3 px-2 space-y-0.5 flex-1">
-              {NAV_ITEMS.map(item => {
+              {[
+                ...NAV_ITEMS,
+                ...(studyGroupsEnabled ? [STUDY_GROUPS_NAV] : []),
+              ].map(item => {
                 const active = isActive(item.href, item.exact);
                 return (
                   <Link
@@ -398,6 +409,11 @@ function InnerLayout({
                     {item.href === '/dashboard/messages' && unreadMsgCount > 0 && (
                       <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>
                         {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
+                      </span>
+                    )}
+                    {item.href === '/dashboard/study-groups' && unreadGroupCount > 0 && (
+                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>
+                        {unreadGroupCount > 9 ? '9+' : unreadGroupCount}
                       </span>
                     )}
                   </Link>
