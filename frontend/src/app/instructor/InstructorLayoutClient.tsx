@@ -202,11 +202,32 @@ function NavIcon({ name }: { name: string }) {
 
 export type InstructorUser = { id: string; name: string; email: string };
 
+export type CourseInfo = {
+  courseCode: string;
+  courseTitle: string;
+  termName: string;
+  termNumber: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  enrolledCount: number;
+};
+
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start || !end) return '';
+  const s = new Date(start);
+  const e = new Date(end);
+  const startStr = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const endStr = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${startStr} – ${endStr}`;
+}
+
 export default function InstructorLayoutClient({
   user,
+  courseInfo,
   children,
 }: {
   user: InstructorUser;
+  courseInfo: CourseInfo | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -439,10 +460,25 @@ export default function InstructorLayoutClient({
           {sidebarOpen && (
             <div className="p-4 overflow-y-auto flex-1">
               <div className="mb-4 pb-3 border-b border-gray-200">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Topic 1</div>
-                <div className="text-sm font-medium text-gray-900 mt-0.5">WTC-100-202603</div>
-                <div className="text-sm text-gray-600">Sample Course</div>
-                <div className="text-xs text-gray-500 mt-1">Mar 4 – 10, 2026 · 1 Student</div>
+                {courseInfo ? (
+                  <>
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      {courseInfo.termName || 'Course'}
+                    </div>
+                    <div className="text-sm font-medium text-gray-900 mt-0.5">
+                      {courseInfo.courseCode || '—'}
+                    </div>
+                    <div className="text-sm text-gray-600">{courseInfo.courseTitle || '—'}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatDateRange(courseInfo.startDate, courseInfo.endDate)}
+                      {courseInfo.enrolledCount > 0 && (
+                        <> · {courseInfo.enrolledCount} {courseInfo.enrolledCount === 1 ? 'Student' : 'Students'}</>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-gray-400 italic">No course assigned</div>
+                )}
               </div>
               <div className="text-xs text-gray-500 mb-3">
                 {new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
