@@ -10,8 +10,6 @@ import { useUnreadGroups } from '@/hooks/useUnreadGroups';
 
 export type DashboardUser = { id: string; name: string; email: string; role: string };
 
-const STUDY_GROUPS_NAV = { href: '/dashboard/study-groups', label: 'Study Groups', icon: '👥', exact: false };
-
 type Notif = {
   id: string;
   title: string;
@@ -30,8 +28,9 @@ const NAV_ITEMS = [
   { href: '/dashboard/certificates', label: 'Certificates',  icon: '🏆', exact: false },
   { href: '/dashboard/announcements',label: 'Announcements', icon: '📢', exact: false },
   { href: '/dashboard/notifications',label: 'Notifications', icon: '🔔', exact: false },
-  { href: '/dashboard/forums',       label: 'Forums',        icon: '💬', exact: false },
-  { href: '/dashboard/messages',     label: 'Messages',      icon: '✉️',  exact: false },
+  { href: '/dashboard/forums',        label: 'Forums',        icon: '💬', exact: false },
+  { href: '/dashboard/messages',      label: 'Messages',      icon: '✉️',  exact: false },
+  { href: '/dashboard/study-groups',  label: 'Study Groups',  icon: '👥', exact: false },
 ];
 
 function getInitials(name: string): string {
@@ -379,10 +378,7 @@ function InnerLayout({
         {!isClassView && sidebarOpen && (
           <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
             <nav className="py-3 px-2 space-y-0.5 flex-1">
-              {[
-                ...NAV_ITEMS,
-                ...(studyGroupsEnabled ? [STUDY_GROUPS_NAV] : []),
-              ].map(item => {
+              {NAV_ITEMS.map(item => {
                 const active = isActive(item.href, item.exact);
                 return (
                   <Link
