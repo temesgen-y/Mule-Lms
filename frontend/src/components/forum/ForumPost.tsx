@@ -326,75 +326,95 @@ export default function ForumPostCard({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap mt-0.5">
-                      {post.body}
-                    </p>
+                    <div
+                      className="text-sm text-gray-700 leading-relaxed mt-0.5 prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ __html: post.body }}
+                    />
                   )}
 
                   {/* Action buttons */}
                   {!editMode && (
-                    <div className="flex items-center gap-3 mt-3 flex-wrap">
-                      {canUpvote && (
+                    <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
+                      {/* Left: upvote, edit, delete, mark-answer */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {canUpvote && (
+                          <button
+                            type="button"
+                            onClick={handleUpvote}
+                            disabled={upvoting}
+                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-cyan-600 transition-colors disabled:opacity-50"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                            </svg>
+                            {post.upvotes > 0 ? post.upvotes : ''} Upvote
+                          </button>
+                        )}
+                        {!canUpvote && post.upvotes > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                            </svg>
+                            {post.upvotes}
+                          </span>
+                        )}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => { setEditMode(true); setEditBody(post.body); }}
+                            className="text-xs text-gray-500 hover:text-blue-600 transition-colors"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={handleDelete}
+                            className="text-xs text-gray-500 hover:text-red-500 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                        {canMarkAnswer && (
+                          <button
+                            type="button"
+                            onClick={handleMarkAnswer}
+                            className="text-xs text-gray-500 hover:text-green-600 transition-colors"
+                          >
+                            ✅ Mark as Answer
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Right: eye + REPLY buttons */}
+                      <div className="flex items-center gap-2 ml-auto">
+                        {/* Eye / read indicator */}
                         <button
                           type="button"
-                          onClick={handleUpvote}
-                          disabled={upvoting}
-                          className="flex items-center gap-1 text-xs text-gray-500 hover:text-cyan-600 transition-colors disabled:opacity-50"
+                          title="Mark as read"
+                          className="flex items-center justify-center w-8 h-8 rounded border border-gray-300 text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
-                          {post.upvotes > 0 ? post.upvotes : ''} Upvote
                         </button>
-                      )}
-                      {!canUpvote && (
-                        <span className="flex items-center gap-1 text-xs text-gray-400">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-                          </svg>
-                          {post.upvotes}
-                        </span>
-                      )}
 
-                      {canReply && (
-                        <button
-                          type="button"
-                          onClick={() => setReplyingToId(replyingToId === post.id ? null : post.id)}
-                          className="text-xs text-gray-500 hover:text-cyan-600 transition-colors"
-                        >
-                          Reply
-                        </button>
-                      )}
-
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => { setEditMode(true); setEditBody(post.body); }}
-                          className="text-xs text-gray-500 hover:text-blue-600 transition-colors"
-                        >
-                          Edit
-                        </button>
-                      )}
-
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={handleDelete}
-                          className="text-xs text-gray-500 hover:text-red-500 transition-colors"
-                        >
-                          Delete
-                        </button>
-                      )}
-
-                      {canMarkAnswer && (
-                        <button
-                          type="button"
-                          onClick={handleMarkAnswer}
-                          className="text-xs text-gray-500 hover:text-green-600 transition-colors"
-                        >
-                          ✅ Mark as Answer
-                        </button>
-                      )}
+                        {/* REPLY button */}
+                        {canReply && (
+                          <button
+                            type="button"
+                            onClick={() => setReplyingToId(replyingToId === post.id ? null : post.id)}
+                            className="flex items-center gap-1.5 px-3 h-8 rounded border border-gray-300 text-xs font-semibold text-gray-600 hover:border-cyan-500 hover:text-cyan-600 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                            REPLY
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
