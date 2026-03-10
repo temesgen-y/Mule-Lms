@@ -48,6 +48,7 @@ type Enrollment = {
   student_name: string;
   student_email: string;
   offering_label: string;
+  course_title: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -154,6 +155,7 @@ export default function EnrollmentsPage() {
       offering_label: r.course_offerings
         ? `${r.course_offerings.courses?.code ?? ''} – ${r.course_offerings.section_name}`
         : '—',
+      course_title: r.course_offerings?.courses?.title ?? '—',
     })));
     setListLoading(false);
   }, []);
@@ -378,7 +380,7 @@ export default function EnrollmentsPage() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -436,32 +438,33 @@ export default function EnrollmentsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Student', 'Email', 'Course Offering', 'Status', 'Grade', 'Score', 'Enrolled', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                  {['Student', 'Email', 'Course', 'Course Offering', 'Status', 'Grade', 'Score', 'Enrolled', 'Actions'].map(h => (
+                    <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paginated.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">No enrollments found</td></tr>
+                  <tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">No enrollments found</td></tr>
                 ) : paginated.map(e => (
                   <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{e.student_name}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{e.student_email}</td>
-                    <td className="px-4 py-3 text-gray-700 text-xs">{e.offering_label}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 font-medium text-gray-900 whitespace-nowrap">{e.student_name}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs">{e.student_email}</td>
+                    <td className="px-3 py-3 text-indigo-600 text-xs font-medium">{e.course_title}</td>
+                    <td className="px-3 py-3 text-gray-700 text-xs">{e.offering_label}</td>
+                    <td className="px-3 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(e.status)}`}>
                         {e.status.charAt(0).toUpperCase() + e.status.slice(1)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       {e.final_grade ? (
                         <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">{e.final_grade}</span>
                       ) : '—'}
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">{e.final_score !== null ? e.final_score : '—'}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{new Date(e.enrolled_at).toLocaleDateString()}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-center text-gray-600">{e.final_score !== null ? e.final_score : '—'}</td>
+                    <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">{new Date(e.enrolled_at).toLocaleDateString()}</td>
+                    <td className="px-3 py-3">
                       <div className="flex gap-2">
                         <button onClick={() => openEdit(e)} className="text-blue-600 hover:underline text-xs">Edit</button>
                         <button onClick={() => setDeleteTarget(e)} className="text-red-500 hover:underline text-xs">Remove</button>

@@ -20,7 +20,7 @@ The login experience follows the provided reference: **purple-tinted background*
 1. **docs/SYSTEM_DESIGN.md** — High-level architecture, backend/frontend structure, DB schema outline, auth flow, RBAC, API examples, security, scalability, deployment (all 10 expected outputs).
 2. **docs/BACKEND_STRUCTURE.md** — Backend folder structure and module mapping.
 3. **docs/FRONTEND_STRUCTURE.md** — Frontend folder structure and design reference.
-4. **docs/DATABASE_SCHEMA.md** — PostgreSQL schema outline and indexes.
+4. **docs/DATABASE_SCHEMA.md** — PostgreSQL schema outline and indexes. **Canonical schema:** `supabase/migrations/lmsv6.sql` (run in Supabase SQL Editor).
 5. **docs/API_EXAMPLES.md** — REST API structure and examples.
 6. **docs/RBAC_DESIGN.md** — RBAC model and permission matrix.
 7. **docs/SECURITY_STRATEGY.md** — Security strategy documentation.
