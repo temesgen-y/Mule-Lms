@@ -36,20 +36,29 @@ export default function InviteMemberModal({
     setLoading(true);
     const supabase = createClient();
 
-    // Students enrolled in same offering (excluding self)
-    const { data: enrolled } = await supabase
+    // Step 1: get student_ids enrolled in this offering (excluding self)
+    const { data: enrolled, error: enrErr } = await supabase
       .from('enrollments')
-      .select(`
-        student_id,
-        users!enrollments_student_id_fkey ( id, first_name, last_name )
-      `)
+      .select('student_id')
       .eq('offering_id', offeringId)
       .eq('status', 'active')
       .neq('student_id', currentUserId);
 
-    if (!enrolled) { setLoading(false); return; }
+    if (enrErr || !enrolled || enrolled.length === 0) { setLoading(false); return; }
 
-    const studentIds = enrolled.map((e: any) => e.student_id as string);
+    const studentIds = enrolled.map((e: { student_id: string }) => e.student_id);
+
+    // Step 2: fetch user names for those student_ids
+    const { data: usersData } = await supabase
+      .from('users')
+      .select('id, first_name, last_name')
+      .in('id', studentIds);
+
+    const userMap = new Map<string, { first_name: string; last_name: string }>();
+    for (const u of usersData ?? []) {
+      const row = u as { id: string; first_name: string; last_name: string };
+      userMap.set(row.id, { first_name: row.first_name, last_name: row.last_name });
+    }
 
     // Get student numbers
     const { data: profiles } = studentIds.length > 0
@@ -77,8 +86,8 @@ export default function InviteMemberModal({
 
     const list: Classmate[] = enrolled.map((e: any) => ({
       student_id: e.student_id,
-      first_name: e.users?.first_name ?? '',
-      last_name: e.users?.last_name ?? '',
+      first_name: userMap.get(e.student_id)?.first_name ?? '',
+      last_name: userMap.get(e.student_id)?.last_name ?? '',
       student_no: profileMap.get(e.student_id) ?? null,
       alreadyMember: memberSet.has(e.student_id),
       invited: false,
