@@ -23,6 +23,7 @@ type Notif = {
 const NAV_ITEMS = [
   { href: '/dashboard',              label: 'Home',          icon: '🏠', exact: true  },
   { href: '/dashboard/courses',      label: 'My Courses',    icon: '📚', exact: false },
+  { href: '/dashboard/assignments',  label: 'Assignments',   icon: '📝', exact: false },
   { href: '/dashboard/grades',       label: 'Grades',        icon: '📊', exact: false },
   { href: '/dashboard/attendance',   label: 'Attendance',    icon: '✅', exact: false },
   { href: '/dashboard/certificates', label: 'Certificates',  icon: '🏆', exact: false },
@@ -149,6 +150,38 @@ function InnerLayout({
   const isClassView = !!pathname?.includes('/dashboard/class');
   const unreadMsgCount = useUnreadMessageCount(user.id);
   const unreadGroupCount = useUnreadGroups(studyGroupsEnabled ? user.id : null);
+  const [pendingAssignmentCount, setPendingAssignmentCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPendingAssignments = async () => {
+      const supabase = createClient();
+      // Get enrolled offering IDs
+      const { data: enrollments } = await supabase
+        .from('enrollments')
+        .select('offering_id')
+        .eq('student_id', user.id)
+        .eq('status', 'active');
+      if (!enrollments || enrollments.length === 0) return;
+      const offeringIds = enrollments.map((e: any) => e.offering_id);
+      // Get submitted assignment IDs for this student
+      const { data: submissions } = await supabase
+        .from('assignment_submissions')
+        .select('assignment_id')
+        .eq('student_id', user.id);
+      const submittedIds = new Set((submissions || []).map((s: any) => s.assignment_id));
+      // Count assignments not yet submitted, not past due, status published
+      const now = new Date().toISOString();
+      const { data: assignments } = await supabase
+        .from('assignments')
+        .select('id')
+        .in('offering_id', offeringIds)
+        .eq('status', 'published')
+        .gte('due_date', now);
+      const pending = (assignments || []).filter((a: any) => !submittedIds.has(a.id));
+      setPendingAssignmentCount(pending.length);
+    };
+    fetchPendingAssignments();
+  }, [user.id]);
   const headerPurple = true; // Always purple, matching Halo Learn style
   const { toggle: toggleClassSidebar } = useClassSidebar();
 
@@ -392,6 +425,11 @@ function InnerLayout({
                   >
                     <span className="text-base w-5 text-center leading-none" aria-hidden>{item.icon}</span>
                     <span className="flex-1">{item.label}</span>
+                    {item.href === '/dashboard/assignments' && pendingAssignmentCount > 0 && (
+                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>
+                        {pendingAssignmentCount > 9 ? '9+' : pendingAssignmentCount}
+                      </span>
+                    )}
                     {item.href === '/dashboard/notifications' && unreadCount > 0 && (
                       <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>
                         {unreadCount > 9 ? '9+' : unreadCount}
