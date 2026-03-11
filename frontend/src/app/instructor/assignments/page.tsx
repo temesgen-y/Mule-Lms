@@ -6,14 +6,14 @@ import { createClient } from '@/lib/supabase/client';
 
 type Assignment = {
   id: string; offeringId: string; offeringLabel: string; title: string;
-  maxScore: number; passScore: number; weightPct: number; dueDate: string;
+  maxScore: number; weightPct: number; dueDate: string;
   allowFiles: boolean; allowText: boolean; lateAllowed: boolean; status: string;
 };
 type OfferingOption = { id: string; label: string };
 const STATUSES = ['draft', 'published', 'closed'];
 const STATUS_COLORS: Record<string, string> = { draft: 'text-gray-500', published: 'text-green-600', closed: 'text-amber-600' };
 const PAGE_SIZE = 10;
-const initialForm = { offeringId: '', title: '', brief: '', maxScore: '100', passScore: '50', weightPct: '0', allowFiles: true, allowedTypes: '', maxFileMb: '10', allowText: false, dueDate: '', lateAllowed: false, latePenaltyPct: '0', status: 'draft' };
+const initialForm = { offeringId: '', title: '', brief: '', maxScore: '100', weightPct: '0', allowFiles: true, allowedTypes: '', maxFileMb: '10', allowText: false, dueDate: '', lateAllowed: false, latePenaltyPct: '0', status: 'draft' };
 
 async function notifyEnrolledStudents(supabase: any, offeringId: string, type: string, title: string, body: string) {
   const { data: enrollments } = await supabase.from('enrollments').select('student_id').eq('offering_id', offeringId).eq('status', 'active');
@@ -58,9 +58,9 @@ export default function InstructorAssignmentsPage() {
     const { data: ciData } = await supabase.from('course_instructors').select('offering_id').eq('instructor_id', userId);
     const offeringIds = (ciData ?? []).map((r: any) => r.offering_id);
     if (!offeringIds.length) { setAssignments([]); setLoading(false); return; }
-    const { data, error } = await supabase.from('assignments').select(`id,offering_id,title,max_score,pass_score,weight_pct,due_date,allow_files,allow_text,late_allowed,status,course_offerings!fk_assignments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`).in('offering_id', offeringIds).order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('assignments').select(`id,offering_id,title,max_score,weight_pct,due_date,allow_files,allow_text,late_allowed,status,course_offerings!fk_assignments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`).in('offering_id', offeringIds).order('created_at', { ascending: false });
     if (error) toast.error('Failed to load assignments.');
-    else setAssignments((data ?? []).map((r: any) => { const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {}; return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', maxScore: r.max_score ?? 100, passScore: r.pass_score ?? 50, weightPct: r.weight_pct ?? 0, dueDate: r.due_date ?? '', allowFiles: r.allow_files ?? true, allowText: r.allow_text ?? false, lateAllowed: r.late_allowed ?? false, status: r.status ?? 'draft' }; }));
+    else setAssignments((data ?? []).map((r: any) => { const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {}; return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', maxScore: r.max_score ?? 100, weightPct: r.weight_pct ?? 0, dueDate: r.due_date ?? '', allowFiles: r.allow_files ?? true, allowText: r.allow_text ?? false, lateAllowed: r.late_allowed ?? false, status: r.status ?? 'draft' }; }));
     setLoading(false);
   }, [getCurrentUserId]);
 
@@ -69,7 +69,7 @@ export default function InstructorAssignmentsPage() {
   const openAddModal = useCallback(() => { setEditingId(null); setForm({ ...initialForm, offeringId: filterOffering }); setSubmitError(''); setModalOpen(true); }, [filterOffering]);
   const openEditModal = useCallback((a: Assignment) => {
     setEditingId(a.id);
-    setForm({ offeringId: a.offeringId, title: a.title, brief: '', maxScore: String(a.maxScore), passScore: String(a.passScore), weightPct: String(a.weightPct), allowFiles: a.allowFiles, allowedTypes: '', maxFileMb: '10', allowText: a.allowText, dueDate: a.dueDate ? new Date(a.dueDate).toISOString().slice(0, 16) : '', lateAllowed: a.lateAllowed, latePenaltyPct: '0', status: a.status });
+    setForm({ offeringId: a.offeringId, title: a.title, brief: '', maxScore: String(a.maxScore), weightPct: String(a.weightPct), allowFiles: a.allowFiles, allowedTypes: '', maxFileMb: '10', allowText: a.allowText, dueDate: a.dueDate ? new Date(a.dueDate).toISOString().slice(0, 16) : '', lateAllowed: a.lateAllowed, latePenaltyPct: '0', status: a.status });
     setSubmitError(''); setModalOpen(true);
   }, []);
   const closeModal = useCallback(() => { if (!isSubmitting) setModalOpen(false); }, [isSubmitting]);
@@ -80,14 +80,13 @@ export default function InstructorAssignmentsPage() {
     if (!form.offeringId) { setSubmitError('Offering is required.'); return; }
     if (!form.title.trim()) { setSubmitError('Title is required.'); return; }
     if (!form.dueDate) { setSubmitError('Due date is required.'); return; }
-    const maxScore = parseInt(form.maxScore, 10); const passScore = parseInt(form.passScore, 10);
+    const maxScore = parseInt(form.maxScore, 10);
     if (!maxScore || maxScore < 1) { setSubmitError('Max score must be at least 1.'); return; }
-    if (passScore > maxScore) { setSubmitError('Pass score cannot exceed max score.'); return; }
     setIsSubmitting(true);
     const userId = await getCurrentUserId();
     const supabase = createClient();
     const prevStatus = editingId ? (assignments.find(a => a.id === editingId)?.status ?? '') : '';
-    const payload: any = { offering_id: form.offeringId, created_by: userId, title: form.title.trim(), brief: form.brief.trim() || '(no brief)', max_score: maxScore, pass_score: passScore, weight_pct: parseFloat(form.weightPct) || 0, allow_files: form.allowFiles, allowed_types: form.allowedTypes.trim() || null, max_file_mb: parseInt(form.maxFileMb, 10) || 10, allow_text: form.allowText, due_date: new Date(form.dueDate).toISOString(), late_allowed: form.lateAllowed, late_penalty_pct: parseFloat(form.latePenaltyPct) || 0, status: form.status };
+    const payload: any = { offering_id: form.offeringId, created_by: userId, title: form.title.trim(), brief: form.brief.trim() || '(no brief)', max_score: maxScore, weight_pct: parseFloat(form.weightPct) || 0, allow_files: form.allowFiles, allowed_types: form.allowedTypes.trim() || null, max_file_mb: parseInt(form.maxFileMb, 10) || 10, allow_text: form.allowText, due_date: new Date(form.dueDate).toISOString(), late_allowed: form.lateAllowed, late_penalty_pct: parseFloat(form.latePenaltyPct) || 0, status: form.status };
     let error;
     if (editingId) ({ error } = await supabase.from('assignments').update(payload).eq('id', editingId));
     else ({ error } = await supabase.from('assignments').insert(payload));
@@ -143,9 +142,8 @@ export default function InstructorAssignmentsPage() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Offering *</label><select value={form.offeringId} onChange={e => setForm((f: any) => ({ ...f, offeringId: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20"><option value="">— Select —</option>{offerings.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</select></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Title *</label><input type="text" value={form.title} onChange={e => setForm((f: any) => ({ ...f, title: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Brief / Instructions</label><textarea rows={3} value={form.brief} onChange={e => setForm((f: any) => ({ ...f, brief: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" /></div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Max Score</label><input type="number" min={1} value={form.maxScore} onChange={e => setForm((f: any) => ({ ...f, maxScore: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Pass Score</label><input type="number" min={1} value={form.passScore} onChange={e => setForm((f: any) => ({ ...f, passScore: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Weight %</label><input type="number" min={0} max={100} value={form.weightPct} onChange={e => setForm((f: any) => ({ ...f, weightPct: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -188,7 +186,7 @@ export default function InstructorAssignmentsPage() {
                 : paginated.map(a => (
                   <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                     <td className="px-5 py-3"><div className="text-sm font-medium text-gray-900">{a.title}</div><div className="text-xs text-gray-500 line-clamp-1">{a.offeringLabel}</div></td>
-                    <td className="px-5 py-3 text-sm text-gray-600">{a.passScore}/{a.maxScore}</td>
+                    <td className="px-5 py-3 text-sm text-gray-600">{a.maxScore}</td>
                     <td className="px-5 py-3 text-sm text-gray-600">{a.weightPct}%</td>
                     <td className="px-5 py-3 text-sm text-gray-600">{a.dueDate ? new Date(a.dueDate).toLocaleDateString() : '—'}</td>
                     <td className="px-5 py-3"><span className={`text-sm font-medium capitalize ${STATUS_COLORS[a.status] ?? 'text-gray-500'}`}>{a.status}</span></td>
