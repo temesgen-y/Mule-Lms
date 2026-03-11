@@ -217,7 +217,9 @@ export default function StudentAssignmentsPage() {
                     </span>
                     {getStatusBadge(a)}
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-sm">{a.title}</h3>
+                  <Link href={`/dashboard/assignments/${a.id}`} className="font-semibold text-gray-900 text-sm hover:text-[#4c1d95] hover:underline">
+                    {a.title}
+                  </Link>
                   {a.brief && (
                     <p
                       className="text-xs text-gray-500 mt-1 line-clamp-2"
@@ -244,14 +246,16 @@ export default function StudentAssignmentsPage() {
                       <span className="text-xs text-gray-400">/{a.max_score}</span>
                     </div>
                   )}
-                  {!a.submission_id && (
-                    <Link
-                      href={`/dashboard/courses`}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#4c1d95] text-white text-xs font-semibold rounded-lg hover:bg-[#3b0764] transition-colors"
-                    >
-                      Submit
-                    </Link>
-                  )}
+                  <Link
+                    href={`/dashboard/assignments/${a.id}`}
+                    className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      a.submission_id
+                        ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        : 'bg-[#4c1d95] text-white hover:bg-[#3b0764]'
+                    }`}
+                  >
+                    {a.submission_id ? 'View' : 'Submit'}
+                  </Link>
                 </div>
               </div>
             </div>
