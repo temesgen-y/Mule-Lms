@@ -511,36 +511,6 @@ export default function InstructorLayoutClient({
                   );
                 })}
               </nav>
-              <nav className="mt-6 space-y-0.5">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Classroom Materials</div>
-                {classroomMaterials.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-200/80"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-              <nav className="mt-4 space-y-0.5">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Institution Resources</div>
-                {institutionResources.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-200/80"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-              <Link
-                href="/instructor/library"
-                className="block px-3 py-2 mt-4 rounded-lg text-sm text-gray-700 hover:bg-gray-200/80"
-              >
-                Library
-              </Link>
             </div>
           )}
         </aside>
