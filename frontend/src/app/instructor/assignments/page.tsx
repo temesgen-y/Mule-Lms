@@ -336,9 +336,9 @@ export default function InstructorAssignmentsPage() {
       try {
         const ext = pf.name.split('.').pop() ?? '';
         const path = `assignments/${userId}/${Date.now()}-${pf.name}`;
-        const { error: upErr } = await supabase.storage.from('attachments').upload(path, pf.file, { contentType: pf.file.type });
+        const { error: upErr } = await supabase.storage.from('lms-uploads').upload(path, pf.file, { contentType: pf.file.type });
         if (upErr) { toast.error(`Failed to upload ${pf.name}: ${upErr.message}`); continue; }
-        const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
+        const { data: urlData } = supabase.storage.from('lms-uploads').getPublicUrl(path);
         const fileUrl = urlData.publicUrl;
 
         // Insert into attachments table
