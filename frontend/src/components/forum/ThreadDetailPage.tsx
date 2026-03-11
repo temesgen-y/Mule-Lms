@@ -42,6 +42,8 @@ export default function ThreadDetailPage({
   const [flatPosts, setFlatPosts] = useState<ForumPostFlat[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [topReplyBody, setTopReplyBody] = useState('');
+  const [submittingTopReply, setSubmittingTopReply] = useState(false);
 const [showGearMenu, setShowGearMenu] = useState(false);
   const [togglingPin, setTogglingPin] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
@@ -187,6 +189,43 @@ const [showGearMenu, setShowGearMenu] = useState(false);
       toast.error(err?.message ?? 'Failed to update thread.');
     } finally {
       setTogglingLock(false);
+    }
+  };
+
+  // ── Top-level reply ───────────────────────────────────────────────────────
+  const submitTopReply = async () => {
+    const trimmed = topReplyBody.trim();
+    if (!trimmed) { toast.error('Reply cannot be empty.'); return; }
+    setSubmittingTopReply(true);
+    try {
+      const supabase = createClient();
+      const { error: postError } = await supabase.from('forum_posts').insert({
+        thread_id: threadId,
+        parent_id: null,
+        author_id: userId,
+        body: trimmed,
+        is_answer: false,
+        upvotes: 0,
+      });
+      if (postError) throw postError;
+
+      const { data: threadRow } = await supabase
+        .from('forum_threads')
+        .select('reply_count')
+        .eq('id', threadId)
+        .single();
+      await supabase.from('forum_threads').update({
+        reply_count: ((threadRow as any)?.reply_count ?? 0) + 1,
+        last_reply_at: new Date().toISOString(),
+      }).eq('id', threadId);
+
+      toast.success('Reply posted.');
+      setTopReplyBody('');
+      refreshAll();
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to post reply.');
+    } finally {
+      setSubmittingTopReply(false);
     }
   };
 
@@ -337,6 +376,31 @@ const [showGearMenu, setShowGearMenu] = useState(false);
               onPostChange={refreshAll}
             />
           ))}
+        </div>
+      )}
+
+      {/* Top-level reply box — visible to all roles when thread is not locked */}
+      {!thread.is_locked && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mt-2">
+          <p className="text-sm font-semibold text-gray-700 mb-2">Write a Reply</p>
+          <textarea
+            className="w-full border border-gray-300 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            rows={4}
+            placeholder="Share your thoughts…"
+            value={topReplyBody}
+            onChange={e => setTopReplyBody(e.target.value)}
+            disabled={submittingTopReply}
+          />
+          <div className="flex justify-end mt-2">
+            <button
+              type="button"
+              onClick={submitTopReply}
+              disabled={submittingTopReply || !topReplyBody.trim()}
+              className="px-5 py-2 bg-cyan-600 text-white text-sm font-semibold rounded-lg hover:bg-cyan-700 disabled:opacity-50 transition-colors"
+            >
+              {submittingTopReply ? 'Posting…' : 'Post Reply'}
+            </button>
+          </div>
         </div>
       )}
 

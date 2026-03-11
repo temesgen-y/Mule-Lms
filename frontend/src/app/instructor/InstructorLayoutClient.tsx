@@ -44,8 +44,6 @@ const mainNav = [
   { href: '/instructor/gradebook-items', label: 'Gradebook Items', icon: 'gradebook-items' },
   { href: '/instructor/attendance', label: 'Attendance', icon: 'attendance' },
   { href: '/instructor/announcements', label: 'Announcements', icon: 'announcements' },
-  { href: '/instructor/forum-threads', label: 'Forum Threads', icon: 'forum-threads' },
-  { href: '/instructor/forum-posts', label: 'Forum Posts', icon: 'forum-posts' },
   { href: '/instructor/notifications', label: 'Notifications', icon: 'notifications' },
   { href: '/instructor/syllabus', label: 'Syllabus', icon: 'syllabus' },
   { href: '/instructor/gradebook', label: 'Gradebook', icon: 'gradebook' },
