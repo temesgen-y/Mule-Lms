@@ -434,9 +434,7 @@ function InnerLayout({
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
       <footer className="bg-white border-t border-gray-200 py-2.5 px-4 text-center text-xs text-gray-400">
-        Grand Canyon University © 2026 All Rights Reserved · 3300 West Camelback Road, Phoenix, AZ 85017
-        <span className="mx-2">·</span>
-        v1.4.12.84 PROD
+        Mule LMS © {new Date().getFullYear()} All Rights Reserved
       </footer>
     </div>
   );

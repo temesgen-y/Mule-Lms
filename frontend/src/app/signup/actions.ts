@@ -59,8 +59,8 @@ export async function completeStudentSignup(
         email,
         first_name: firstName || null,
         last_name: lastName || null,
-        role: 'student',
-        status: 'pending',
+        role: 'STUDENT',
+        status: 'PENDING',
       },
       { onConflict: 'auth_user_id' }
     );

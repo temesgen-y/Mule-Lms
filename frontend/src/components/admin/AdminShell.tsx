@@ -315,6 +315,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               </Link>
             )
           )}
+          {!collapsed && (
+            <p className="text-[10px] text-white/40 text-center mt-2 px-4">
+              Mule LMS © {new Date().getFullYear()} All Rights Reserved
+            </p>
+          )}
         </div>
       </aside>
 
