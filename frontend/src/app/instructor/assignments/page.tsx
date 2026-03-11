@@ -386,7 +386,7 @@ export default function InstructorAssignmentsPage() {
       title: form.title.trim(),
       brief: briefHtml || '(no brief)',
       max_score: maxScore,
-      pass_score: Math.round(maxScore * 0.5),
+      pass_score: maxScore,
       weight_pct: parseFloat(form.weightPct) || 0,
       allow_files: form.allowFiles,
       allowed_types: form.allowedTypes.trim() || null,
