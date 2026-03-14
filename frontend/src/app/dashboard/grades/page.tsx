@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { getLetterGrade, getGradeColor } from '@/utils/gradeCalculator';
 
 type GradeRow = {
   id: string;
@@ -15,25 +16,6 @@ type GradeRow = {
   passed: boolean;
   recordedAt: string;
 };
-
-function letterGrade(pct: number): string {
-  if (pct >= 93) return 'A';
-  if (pct >= 90) return 'A−';
-  if (pct >= 87) return 'B+';
-  if (pct >= 83) return 'B';
-  if (pct >= 80) return 'B−';
-  if (pct >= 77) return 'C+';
-  if (pct >= 73) return 'C';
-  if (pct >= 70) return 'C−';
-  if (pct >= 60) return 'D';
-  return 'F';
-}
-
-function gradeColor(pct: number): string {
-  if (pct >= 90) return 'text-green-700 bg-green-50';
-  if (pct >= 70) return 'text-amber-700 bg-amber-50';
-  return 'text-red-700 bg-red-50';
-}
 
 export default function GradesPage() {
   const [grades, setGrades] = useState<GradeRow[]>([]);
@@ -110,7 +92,7 @@ export default function GradesPage() {
           {!loading && filtered.length > 0 && (
             <div className="text-right">
               <p className="text-2xl font-bold text-[#4c1d95]">{avg}%</p>
-              <p className="text-xs text-gray-500">Average · {letterGrade(avg)}</p>
+              <p className="text-xs text-gray-500">Average · {getLetterGrade(avg)}</p>
             </div>
           )}
         </div>
@@ -157,8 +139,8 @@ export default function GradesPage() {
                       <span className="text-gray-400 text-xs">/{g.totalMarks}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${gradeColor(g.scorePct)}`}>
-                        {letterGrade(g.scorePct)}
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${getGradeColor(getLetterGrade(g.scorePct))}`}>
+                        {getLetterGrade(g.scorePct)}
                         <span className="font-normal opacity-70">({g.scorePct.toFixed(0)}%)</span>
                       </span>
                     </td>

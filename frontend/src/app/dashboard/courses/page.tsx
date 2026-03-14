@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { getGradeColor } from '@/utils/gradeCalculator';
 
 type ClassCard = {
   enrollmentId: string;
@@ -14,6 +15,8 @@ type ClassCard = {
   instructor: string;
   studentCount: number;
   enrollmentStatus: string;
+  finalGrade: string | null;
+  finalScore: number | null;
 };
 
 function fmt(dateStr: string | null | undefined): string {
@@ -53,7 +56,7 @@ export default function CoursesPage() {
       const { data: rows } = await supabase
         .from('enrollments')
         .select(`
-          id, status, offering_id,
+          id, status, offering_id, final_grade, final_score,
           course_offerings!fk_enrollments_offering(
             id, section_name, enrolled_count, status,
             courses!fk_course_offerings_course(code, title),
@@ -80,6 +83,8 @@ export default function CoursesPage() {
           instructor:       primaryInstructor(o.course_instructors ?? []),
           studentCount:     o.enrolled_count ?? 0,
           enrollmentStatus: row.status,
+          finalGrade:       row.final_grade ?? null,
+          finalScore:       row.final_score ?? null,
         };
         if (row.status === 'active' && ['upcoming', 'active'].includes(o.status)) {
           currentCards.push(card);
@@ -155,6 +160,17 @@ export default function CoursesPage() {
                         <span aria-hidden>👥</span>
                         <span className="text-[#1565C0] font-medium">{c.studentCount} Student{c.studentCount !== 1 ? 's' : ''}</span>
                       </span>
+                      <span className="flex items-center gap-1.5">
+                        <span aria-hidden>📊</span>
+                        {c.finalGrade ? (
+                          <span className="flex items-center gap-1">
+                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${getGradeColor(c.finalGrade)}`}>{c.finalGrade}</span>
+                            {c.finalScore !== null && <span className="text-gray-500 text-xs">{c.finalScore.toFixed(1)}</span>}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">In Progress</span>
+                        )}
+                      </span>
                     </div>
                     <div className="flex justify-center">
                       <Link
@@ -183,6 +199,14 @@ export default function CoursesPage() {
                       <span className="flex items-center gap-1.5"><span aria-hidden>🎓</span>{c.instructor}</span>
                       <span className="flex items-center gap-1.5"><span aria-hidden>👥</span>{c.studentCount} Student{c.studentCount !== 1 ? 's' : ''}</span>
                       <span className="inline-block px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs capitalize">{c.enrollmentStatus}</span>
+                      {c.finalGrade ? (
+                        <span className="flex items-center gap-1">
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${getGradeColor(c.finalGrade)}`}>{c.finalGrade}</span>
+                          {c.finalScore !== null && <span className="text-gray-400 text-xs">{c.finalScore.toFixed(1)}</span>}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">In Progress</span>
+                      )}
                     </div>
                     <div className="flex justify-center">
                       <Link

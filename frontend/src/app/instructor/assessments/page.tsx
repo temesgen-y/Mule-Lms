@@ -3,10 +3,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import RichTextEditor from '@/components/shared/RichTextEditor';
 
 type Assessment = {
   id: string; offeringId: string; offeringLabel: string; title: string; type: string;
-  totalMarks: number; passMark: number; timeLimitMins: number | null; maxAttempts: number;
+  instructions: string; totalMarks: number; passMark: number; timeLimitMins: number | null; maxAttempts: number;
   weightPct: number; status: string; availableFrom: string; availableUntil: string;
 };
 type OfferingOption = { id: string; label: string };
@@ -15,7 +16,7 @@ const TYPE_LABELS: Record<string, string> = { quiz: 'Quiz', midterm: 'Midterm', 
 const STATUSES = ['draft', 'published', 'closed', 'archived'];
 const STATUS_COLORS: Record<string, string> = { draft: 'text-gray-500', published: 'text-green-600', closed: 'text-amber-600', archived: 'text-gray-400' };
 const PAGE_SIZE = 10;
-const initialForm = { offeringId: '', title: '', type: 'quiz', instructions: '', totalMarks: '100', passMark: '50', timeLimitMins: '', maxAttempts: '1', shuffleQuestions: false, shuffleOptions: false, showResult: true, showAnswers: false, availableFrom: '', availableUntil: '', weightPct: '0', status: 'draft' };
+const initialForm = { offeringId: '', title: '', type: 'quiz', instructions: '', totalMarks: '100', timeLimitMins: '', maxAttempts: '1', shuffleQuestions: false, shuffleOptions: false, showResult: true, showAnswers: false, availableFrom: '', availableUntil: '', weightPct: '0', status: 'draft' };
 
 async function notifyEnrolledStudents(supabase: any, offeringId: string, type: string, title: string, body: string) {
   const { data: enrollments } = await supabase.from('enrollments').select('student_id').eq('offering_id', offeringId).eq('status', 'active');
@@ -62,7 +63,7 @@ export default function InstructorAssessmentsPage() {
     if (!offeringIds.length) { setAssessments([]); setLoading(false); return; }
     const { data, error } = await supabase.from('assessments').select(`id,offering_id,title,type,total_marks,pass_mark,time_limit_mins,max_attempts,weight_pct,status,available_from,available_until,course_offerings!fk_assessments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`).in('offering_id', offeringIds).order('created_at', { ascending: false });
     if (error) toast.error('Failed to load assessments.');
-    else setAssessments((data ?? []).map((r: any) => { const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {}; return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', type: r.type ?? 'quiz', totalMarks: r.total_marks ?? 100, passMark: r.pass_mark ?? 50, timeLimitMins: r.time_limit_mins ?? null, maxAttempts: r.max_attempts ?? 1, weightPct: r.weight_pct ?? 0, status: r.status ?? 'draft', availableFrom: r.available_from ?? '', availableUntil: r.available_until ?? '' }; }));
+    else setAssessments((data ?? []).map((r: any) => { const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {}; return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', type: r.type ?? 'quiz', instructions: r.instructions ?? '', totalMarks: r.total_marks ?? 100, passMark: r.pass_mark ?? 50, timeLimitMins: r.time_limit_mins ?? null, maxAttempts: r.max_attempts ?? 1, weightPct: r.weight_pct ?? 0, status: r.status ?? 'draft', availableFrom: r.available_from ?? '', availableUntil: r.available_until ?? '' }; }));
     setLoading(false);
   }, [getCurrentUserId]);
 
@@ -71,7 +72,7 @@ export default function InstructorAssessmentsPage() {
   const openAddModal = useCallback(() => { setEditingId(null); setForm({ ...initialForm, offeringId: filterOffering }); setSubmitError(''); setModalOpen(true); }, [filterOffering]);
   const openEditModal = useCallback((a: Assessment) => {
     setEditingId(a.id);
-    setForm({ offeringId: a.offeringId, title: a.title, type: a.type, instructions: '', totalMarks: String(a.totalMarks), passMark: String(a.passMark), timeLimitMins: a.timeLimitMins !== null ? String(a.timeLimitMins) : '', maxAttempts: String(a.maxAttempts), shuffleQuestions: false, shuffleOptions: false, showResult: true, showAnswers: false, availableFrom: a.availableFrom ? new Date(a.availableFrom).toISOString().slice(0, 16) : '', availableUntil: a.availableUntil ? new Date(a.availableUntil).toISOString().slice(0, 16) : '', weightPct: String(a.weightPct), status: a.status });
+    setForm({ offeringId: a.offeringId, title: a.title, type: a.type, instructions: a.instructions ?? '', totalMarks: String(a.totalMarks), timeLimitMins: a.timeLimitMins !== null ? String(a.timeLimitMins) : '', maxAttempts: String(a.maxAttempts), shuffleQuestions: false, shuffleOptions: false, showResult: true, showAnswers: false, availableFrom: a.availableFrom ? new Date(a.availableFrom).toISOString().slice(0, 16) : '', availableUntil: a.availableUntil ? new Date(a.availableUntil).toISOString().slice(0, 16) : '', weightPct: String(a.weightPct), status: a.status });
     setSubmitError(''); setModalOpen(true);
   }, []);
   const closeModal = useCallback(() => { if (!isSubmitting) setModalOpen(false); }, [isSubmitting]);
@@ -81,16 +82,15 @@ export default function InstructorAssessmentsPage() {
     e.preventDefault(); setSubmitError('');
     if (!form.offeringId) { setSubmitError('Offering is required.'); return; }
     if (!form.title.trim()) { setSubmitError('Title is required.'); return; }
-    const totalMarks = parseInt(form.totalMarks, 10); const passMark = parseInt(form.passMark, 10);
+    const totalMarks = parseInt(form.totalMarks, 10);
     if (!totalMarks || totalMarks < 1) { setSubmitError('Total marks must be at least 1.'); return; }
-    if (!passMark || passMark > totalMarks) { setSubmitError('Pass mark cannot exceed total marks.'); return; }
     const timeLimitMins = form.timeLimitMins ? parseInt(form.timeLimitMins, 10) : null;
     const maxAttempts = parseInt(form.maxAttempts, 10) || 1;
     const weightPct = parseFloat(form.weightPct) || 0;
     setIsSubmitting(true);
     const userId = await getCurrentUserId();
     const supabase = createClient();
-    const payload: any = { offering_id: form.offeringId, created_by: userId, title: form.title.trim(), type: form.type, instructions: form.instructions.trim() || null, total_marks: totalMarks, pass_mark: passMark, time_limit_mins: timeLimitMins, max_attempts: maxAttempts, shuffle_questions: form.shuffleQuestions, shuffle_options: form.shuffleOptions, show_result: form.showResult, show_answers: form.showAnswers, available_from: form.availableFrom ? new Date(form.availableFrom).toISOString() : null, available_until: form.availableUntil ? new Date(form.availableUntil).toISOString() : null, weight_pct: weightPct, status: form.status };
+    const payload: any = { offering_id: form.offeringId, created_by: userId, title: form.title.trim(), type: form.type, instructions: form.instructions || null, total_marks: totalMarks, pass_mark: Math.round(totalMarks * 0.5), time_limit_mins: timeLimitMins, max_attempts: maxAttempts, shuffle_questions: form.shuffleQuestions, shuffle_options: form.shuffleOptions, show_result: form.showResult, show_answers: form.showAnswers, available_from: form.availableFrom ? new Date(form.availableFrom).toISOString() : null, available_until: form.availableUntil ? new Date(form.availableUntil).toISOString() : null, weight_pct: weightPct, status: form.status };
     let error; let prevStatus = '';
     if (editingId) {
       const existing = assessments.find(a => a.id === editingId); prevStatus = existing?.status ?? '';
@@ -159,18 +159,15 @@ export default function InstructorAssessmentsPage() {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Total Marks</label><input type="number" min={1} value={form.totalMarks} onChange={e => setForm((f: any) => ({ ...f, totalMarks: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Pass Mark</label><input type="number" min={1} value={form.passMark} onChange={e => setForm((f: any) => ({ ...f, passMark: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Weight %</label><input type="number" min={0} max={100} step={0.01} value={form.weightPct} onChange={e => setForm((f: any) => ({ ...f, weightPct: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Time Limit (mins)</label><input type="number" min={1} value={form.timeLimitMins} placeholder="No limit" onChange={e => setForm((f: any) => ({ ...f, timeLimitMins: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Max Attempts</label><input type="number" min={1} value={form.maxAttempts} onChange={e => setForm((f: any) => ({ ...f, maxAttempts: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                 </div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Weight %</label><input type="number" min={0} max={100} step={0.01} value={form.weightPct} onChange={e => setForm((f: any) => ({ ...f, weightPct: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Available From</label><input type="datetime-local" value={form.availableFrom} onChange={e => setForm((f: any) => ({ ...f, availableFrom: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Available Until</label><input type="datetime-local" value={form.availableUntil} onChange={e => setForm((f: any) => ({ ...f, availableUntil: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" /></div>
                 </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label><textarea rows={3} value={form.instructions} onChange={e => setForm((f: any) => ({ ...f, instructions: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label><RichTextEditor value={form.instructions} onChange={(html: string) => setForm((f: any) => ({ ...f, instructions: html }))} minHeight="160px" /></div>
                 <div className="grid grid-cols-2 gap-4">
                   {[['shuffleQuestions', 'Shuffle Questions'], ['shuffleOptions', 'Shuffle Options'], ['showResult', 'Show Result'], ['showAnswers', 'Show Answers']].map(([key, label]) => (
                     <div key={key} className="flex items-center gap-2"><input type="checkbox" id={key} checked={form[key]} onChange={e => setForm((f: any) => ({ ...f, [key]: e.target.checked }))} className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary" /><label htmlFor={key} className="text-sm text-gray-700">{label}</label></div>

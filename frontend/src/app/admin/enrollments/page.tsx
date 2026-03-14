@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { getGradeColor } from '@/utils/gradeCalculator';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -459,10 +460,12 @@ export default function EnrollmentsPage() {
                     </td>
                     <td className="px-3 py-3 text-center">
                       {e.final_grade ? (
-                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">{e.final_grade}</span>
-                      ) : '—'}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getGradeColor(e.final_grade)}`}>{e.final_grade}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">Pending</span>
+                      )}
                     </td>
-                    <td className="px-3 py-3 text-center text-gray-600">{e.final_score !== null ? e.final_score : '—'}</td>
+                    <td className="px-3 py-3 text-center text-gray-600">{e.final_score !== null ? e.final_score : <span className="text-xs text-gray-400">—</span>}</td>
                     <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">{new Date(e.enrolled_at).toLocaleDateString()}</td>
                     <td className="px-3 py-3">
                       <div className="flex gap-2">

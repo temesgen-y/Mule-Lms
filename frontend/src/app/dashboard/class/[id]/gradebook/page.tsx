@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getGradeColor } from '@/utils/gradeCalculator';
 
 type GradeItem = {
   id: string;
@@ -15,14 +16,6 @@ type GradeItem = {
   isOverridden: boolean;
   recordedAt: string | null;
 };
-
-function letterColor(g: string | null) {
-  if (!g) return 'bg-gray-100 text-gray-500';
-  if (g.startsWith('A')) return 'bg-green-100 text-green-700';
-  if (g.startsWith('B')) return 'bg-blue-100 text-blue-700';
-  if (g.startsWith('C')) return 'bg-amber-100 text-amber-700';
-  return 'bg-red-100 text-red-700';
-}
 
 function fmt(ts: string | null): string {
   if (!ts) return '—';
@@ -131,7 +124,7 @@ export default function ClassGradebookPage() {
             <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 min-w-[150px]">
               <p className="text-xs text-gray-500 mb-1">Final Grade</p>
               {finalGrade ? (
-                <p className={`text-2xl font-bold ${letterColor(finalGrade).split(' ')[1]}`}>{finalGrade}</p>
+                <p className={`text-2xl font-bold ${getGradeColor(finalGrade).split(' ')[1]}`}>{finalGrade}</p>
               ) : allGraded ? (
                 <p className="text-2xl font-bold text-amber-600">{totalWeighted >= 60 ? 'Passing' : 'Failing'}</p>
               ) : (
@@ -183,7 +176,7 @@ export default function ClassGradebookPage() {
                     </td>
                     <td className="px-4 py-3">
                       {item.letterGrade ? (
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${letterColor(item.letterGrade)}`}>
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${getGradeColor(item.letterGrade)}`}>
                           {item.letterGrade}
                         </span>
                       ) : (

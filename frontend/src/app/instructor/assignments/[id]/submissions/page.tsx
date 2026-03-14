@@ -5,11 +5,13 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { updateGradebookItem } from '@/utils/updateGradebook';
 
 type AssignmentInfo = {
   id: string;
   title: string;
   max_score: number;
+  weight_pct: number;
   offering_id: string;
   course_name: string;
   due_date: string;
@@ -62,7 +64,7 @@ export default function AssignmentSubmissionsPage() {
       // Fetch assignment details
       const { data: asgn } = await supabase
         .from('assignments')
-        .select(`id, title, max_score, offering_id, due_date, course_offerings(courses(title))`)
+        .select(`id, title, max_score, weight_pct, offering_id, due_date, course_offerings(courses(title))`)
         .eq('id', id)
         .single();
 
@@ -72,6 +74,7 @@ export default function AssignmentSubmissionsPage() {
         id: asgn.id,
         title: asgn.title,
         max_score: asgn.max_score,
+        weight_pct: (asgn as any).weight_pct ?? 0,
         offering_id: asgn.offering_id,
         due_date: asgn.due_date,
         course_name: (asgn as any).course_offerings?.courses?.title ?? 'Unknown Course',
@@ -157,25 +160,21 @@ export default function AssignmentSubmissionsPage() {
       return;
     }
 
-    // Upsert into grades table
-    const scorePct = (scoreNum / assignment.max_score) * 100;
-    const { error: gradeError } = await supabase
-      .from('grades')
-      .upsert({
-        student_id: sub.student_id,
-        enrollment_id: sub.enrollment_id,
-        assignment_id: assignment.id,
-        raw_score: scoreNum,
-        total_marks: assignment.max_score,
-        score_pct: Math.round(scorePct * 100) / 100,
-        passed: scorePct >= 50,
-        recorded_at: new Date().toISOString(),
-      }, { onConflict: 'student_id,assignment_id' });
-
-    if (gradeError) {
-      toast.error('Grade saved to submission but failed to update gradebook: ' + gradeError.message);
-    } else {
+    // Update grades table + gradebook_items + recalculate final grade
+    try {
+      await updateGradebookItem(
+        supabase,
+        sub.enrollment_id,
+        sub.student_id,
+        assignment.id,
+        'assignment',
+        scoreNum,
+        assignment.max_score,
+        assignment.weight_pct,
+      );
       toast.success(`Grade saved for ${sub.student_name}`);
+    } catch (err: any) {
+      toast.error('Grade saved to submission but failed to update gradebook: ' + (err?.message ?? err));
     }
 
     // Notify student

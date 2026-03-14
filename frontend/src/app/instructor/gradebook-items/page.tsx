@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { getGradeColor } from '@/utils/gradeCalculator';
 
 const PAGE_SIZE = 10;
-const LETTER_GRADES = ['A', 'B', 'C', 'D', 'F'] as const;
+const LETTER_GRADES = ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'D', 'F'] as const;
 
 type GradebookItem = {
   id: string;
@@ -310,7 +311,7 @@ export default function GradebookItemsPage() {
                     <td className="px-4 py-3 font-medium">{item.weighted_score}</td>
                     <td className="px-4 py-3">
                       {item.letter_grade ? (
-                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-bold">{item.letter_grade}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getGradeColor(item.letter_grade)}`}>{item.letter_grade}</span>
                       ) : '—'}
                     </td>
                     <td className="px-4 py-3">
