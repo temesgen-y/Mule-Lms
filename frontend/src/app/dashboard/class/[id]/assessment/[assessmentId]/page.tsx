@@ -961,20 +961,31 @@ export default function AssessmentTakingPage() {
                         </div>
                       </div>
 
-                      {/* MCQ option review */}
-                      {isAuto && assessment.show_answers && (
+                      {/* MCQ option review — always show student's selection; reveal correct answer only if show_answers=true */}
+                      {isAuto && q.options.length > 0 && (
                         <div className="px-5 pb-4 space-y-1.5">
                           {q.options.map(opt => {
-                            const wasSel   = (ra?.selectedOptions ?? []).includes(opt.id);
-                            const isCorr   = opt.is_correct;
+                            const wasSel = (ra?.selectedOptions ?? []).includes(opt.id);
+                            const isCorr = opt.is_correct;
+                            const showCorrect = assessment.show_answers;
+
+                            let cls = 'bg-white text-gray-600 border border-gray-100';
+                            if (showCorrect && isCorr)             cls = 'bg-green-100 text-green-800 border border-green-200';
+                            else if (showCorrect && wasSel)        cls = 'bg-red-100 text-red-700 border border-red-200';
+                            else if (!showCorrect && wasSel)       cls = 'bg-purple-50 text-purple-800 border border-[#4c1d95]/30';
+
+                            const icon = showCorrect
+                              ? (isCorr ? '✓' : wasSel ? '✗' : '·')
+                              : (wasSel ? '●' : '○');
+
                             return (
-                              <div key={opt.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm ${
-                                isCorr ? 'bg-green-100 text-green-800' : wasSel ? 'bg-red-100 text-red-700' : 'bg-white text-gray-600 border border-gray-100'
-                              }`}>
-                                <span className="w-4">{isCorr ? '✓' : wasSel ? '✗' : '·'}</span>
+                              <div key={opt.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm ${cls}`}>
+                                <span className="w-4 flex-shrink-0">{icon}</span>
                                 <span dangerouslySetInnerHTML={{ __html: opt.body }} />
-                                {wasSel && !isCorr && <span className="ml-auto text-xs text-red-500">Your answer</span>}
-                                {wasSel && isCorr  && <span className="ml-auto text-xs text-green-600">Your answer ✓</span>}
+                                {wasSel && !showCorrect && <span className="ml-auto text-xs text-[#4c1d95] font-medium flex-shrink-0">Your answer</span>}
+                                {wasSel && showCorrect && !isCorr && <span className="ml-auto text-xs text-red-500 flex-shrink-0">Your answer</span>}
+                                {wasSel && showCorrect && isCorr  && <span className="ml-auto text-xs text-green-600 flex-shrink-0">Your answer ✓</span>}
+                                {!wasSel && showCorrect && isCorr  && <span className="ml-auto text-xs text-green-600 flex-shrink-0">Correct answer</span>}
                               </div>
                             );
                           })}
