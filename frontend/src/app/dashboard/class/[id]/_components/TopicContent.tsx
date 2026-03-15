@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ type LessonDetail = {
   title: string;
   type: 'video' | 'document' | 'link' | 'scorm';
   content_url: string | null;
+  content_body: string | null;
   duration_mins: number | null;
 };
 
@@ -45,7 +46,6 @@ type AssessmentDetail = {
   title: string;
   type: string;
   total_marks: number;
-  weight_pct: number | null;
   time_limit_mins: number | null;
   max_attempts: number;
   available_from: string | null;
@@ -57,7 +57,6 @@ type AssignmentDetail = {
   title: string;
   brief: string | null;
   max_score: number;
-  weight_pct: number | null;
   due_date: string | null;
   late_allowed: boolean;
 };
@@ -129,10 +128,16 @@ function assignmentActionLabel(detail: AssignmentDetail, progress: ProgressInfo 
 
 // ─── CollapsibleItem ─────────────────────────────────────────────────────────
 
-function AssessmentItem({ item }: { item: ModuleItem }) {
+function AssessmentItem({ item, offeringId }: { item: ModuleItem; offeringId: string }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const detail = item.detail as AssessmentDetail;
   const action = assessmentActionLabel(detail, item.progress);
+
+  function handleAction() {
+    if (action.disabled || !item.assessment_id) return;
+    router.push(`/dashboard/class/${offeringId}/assessment/${item.assessment_id}`);
+  }
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden mb-3">
@@ -152,9 +157,14 @@ function AssessmentItem({ item }: { item: ModuleItem }) {
           <p className="text-xs text-gray-500 capitalize">{detail.type.replace(/_/g, ' ')}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`px-3 py-1.5 rounded text-white text-xs font-semibold ${action.color} ${action.disabled ? 'opacity-60 cursor-default' : 'cursor-pointer'}`}>
+          <button
+            type="button"
+            onClick={handleAction}
+            disabled={action.disabled}
+            className={`px-3 py-1.5 rounded text-xs font-semibold ${action.color} ${action.disabled ? 'opacity-70 cursor-default' : 'cursor-pointer'}`}
+          >
             {action.label}
-          </span>
+          </button>
         </div>
       </div>
 
@@ -242,10 +252,6 @@ function AssignmentItem({ item }: { item: ModuleItem }) {
               <p className="text-gray-500 font-medium">Max Score</p>
               <p className="text-gray-800 mt-0.5">{detail.max_score}</p>
             </div>
-            <div>
-              <p className="text-gray-500 font-medium">Weight</p>
-              <p className="text-gray-800 mt-0.5">{detail.weight_pct != null ? `${detail.weight_pct}%` : '—'}</p>
-            </div>
           </div>
           {detail.brief && (
             <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{detail.brief}</p>
@@ -300,6 +306,68 @@ function LiveSessionItem({ item }: { item: ModuleItem }) {
           <span className="text-xs text-gray-400 capitalize">{detail.status === 'cancelled' ? '🚫 Cancelled' : '⏳ Upcoming'}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── LessonItem ───────────────────────────────────────────────────────────────
+
+function LessonItem({ item }: { item: ModuleItem }) {
+  const [open, setOpen] = useState(false);
+  const detail = item.detail as LessonDetail;
+  const prog = item.progress?.type === 'lesson' ? item.progress.status : 'not_started';
+  const progColors = { not_started: 'bg-gray-100 text-gray-500', in_progress: 'bg-amber-100 text-amber-700', completed: 'bg-green-100 text-green-700' };
+  const progLabels = { not_started: 'Not Started', in_progress: 'In Progress', completed: '✓ Completed' };
+  const hasBody = !!detail.content_body;
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden mb-3">
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-white">
+        {hasBody ? (
+          <button
+            type="button"
+            onClick={() => setOpen(v => !v)}
+            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label={open ? 'Collapse' : 'Expand'}
+          >
+            <span className={`text-sm transition-transform inline-block ${open ? 'rotate-90' : ''}`}>›</span>
+          </button>
+        ) : (
+          <div className="w-7 flex-shrink-0" />
+        )}
+        <span className="text-lg flex-shrink-0">{LESSON_ICONS[detail.type] ?? '📄'}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 text-sm">{detail.title}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${progColors[prog]}`}>
+              {progLabels[prog]}
+            </span>
+            {detail.duration_mins && <span className="text-xs text-gray-400">{detail.duration_mins} min</span>}
+            {item.is_mandatory && <span className="text-[10px] font-semibold text-red-600">Required</span>}
+          </div>
+        </div>
+        {detail.content_url && (
+          <a
+            href={detail.content_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-shrink-0 px-3 py-1.5 rounded bg-[#4c1d95] text-white text-xs font-semibold hover:bg-[#5b21b6] transition-colors"
+          >
+            Open →
+          </a>
+        )}
+      </div>
+
+      {/* Expanded rich-text description */}
+      {open && hasBody && (
+        <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
+          <div
+            className="prose prose-sm max-w-none text-gray-700"
+            dangerouslySetInnerHTML={{ __html: detail.content_body! }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -368,9 +436,9 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
       const lsIds        = rawItems.filter(i => i.live_session_id).map(i => i.live_session_id as string);
 
       const [lessonsRes, assessRes, assignRes, lsRes, progressRes, attemptsRes, subsRes] = await Promise.all([
-        lessonIds.length ? supabase.from('lessons').select('id, title, type, content_url, duration_mins').in('id', lessonIds) : Promise.resolve({ data: [] }),
-        assessIds.length ? supabase.from('assessments').select('id, title, type, total_marks, weight_pct, time_limit_mins, max_attempts, available_from, available_until').in('id', assessIds) : Promise.resolve({ data: [] }),
-        assignIds.length ? supabase.from('assignments').select('id, title, brief, max_score, weight_pct, due_date, late_allowed').in('id', assignIds) : Promise.resolve({ data: [] }),
+        lessonIds.length ? supabase.from('lessons').select('id, title, type, content_url, content_body, duration_mins').in('id', lessonIds) : Promise.resolve({ data: [] }),
+        assessIds.length ? supabase.from('assessments').select('id, title, type, total_marks, time_limit_mins, max_attempts, available_from, available_until').in('id', assessIds) : Promise.resolve({ data: [] }),
+        assignIds.length ? supabase.from('assignments').select('id, title, brief, max_score, due_date, late_allowed').in('id', assignIds) : Promise.resolve({ data: [] }),
         lsIds.length ? supabase.from('live_sessions').select('id, title, platform, join_url, scheduled_at, duration_mins, recording_url, status').in('id', lsIds) : Promise.resolve({ data: [] }),
         // lesson_progress
         (lessonIds.length && enrollmentId) ? supabase.from('lesson_progress').select('lesson_id, status').eq('enrollment_id', enrollmentId).in('lesson_id', lessonIds) : Promise.resolve({ data: [] }),
@@ -404,18 +472,18 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
 
         if (raw.item_type === 'lesson' && raw.lesson_id && lessonMap[raw.lesson_id]) {
           const l = lessonMap[raw.lesson_id];
-          detail = { kind: 'lesson', title: l.title, type: l.type, content_url: l.content_url, duration_mins: l.duration_mins };
+          detail = { kind: 'lesson', title: l.title, type: l.type, content_url: l.content_url, content_body: l.content_body ?? null, duration_mins: l.duration_mins };
           const p = progressMap[raw.lesson_id];
           if (p) progress = { type: 'lesson', status: p.status };
           else progress = { type: 'lesson', status: 'not_started' };
         } else if (raw.item_type === 'assessment' && raw.assessment_id && assessMap[raw.assessment_id]) {
           const a = assessMap[raw.assessment_id];
-          detail = { kind: 'assessment', title: a.title, type: a.type, total_marks: a.total_marks, weight_pct: a.weight_pct, time_limit_mins: a.time_limit_mins, max_attempts: a.max_attempts, available_from: a.available_from, available_until: a.available_until };
+          detail = { kind: 'assessment', title: a.title, type: a.type, total_marks: a.total_marks, time_limit_mins: a.time_limit_mins, max_attempts: a.max_attempts, available_from: a.available_from, available_until: a.available_until };
           const att = attemptsMap[raw.assessment_id];
           if (att) progress = { type: 'assessment', attempts: att.attempt_number, score_pct: att.score_pct, passed: att.passed, status: att.status };
         } else if (raw.item_type === 'assignment' && raw.assignment_id && assignMap[raw.assignment_id]) {
           const a = assignMap[raw.assignment_id];
-          detail = { kind: 'assignment', title: a.title, brief: a.brief, max_score: a.max_score, weight_pct: a.weight_pct, due_date: a.due_date, late_allowed: a.late_allowed };
+          detail = { kind: 'assignment', title: a.title, brief: a.brief, max_score: a.max_score, due_date: a.due_date, late_allowed: a.late_allowed };
           const sub = subsMap[raw.assignment_id];
           if (sub) progress = { type: 'assignment', submitted: true, graded: sub.status === 'graded', score: sub.score, status: sub.status };
           else progress = { type: 'assignment', submitted: false, graded: false, score: null, status: 'not_submitted' };
@@ -448,22 +516,16 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
     })();
   }, [offeringId, topicIndex]);
 
-  // Split items into "assessments/assignments" (main) and "resources" (right panel)
-  const mainItems = items.filter(i => ['assessment', 'assignment', 'live_session'].includes(i.item_type));
-  const resourceItems = items.filter(i => ['lesson', 'link'].includes(i.item_type));
+  const lessonItems = items.filter(i => ['lesson', 'link'].includes(i.item_type));
+  const activityItems = items.filter(i => ['assessment', 'assignment', 'live_session'].includes(i.item_type));
 
   if (loading) {
     return (
       <div className="animate-pulse space-y-4">
         <div className="h-8 bg-gray-200 rounded w-1/3" />
         <div className="h-20 bg-gray-200 rounded" />
-        <div className="grid grid-cols-3 gap-4">
-          <div className="col-span-2 space-y-3">
-            {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-200 rounded-lg" />)}
-          </div>
-          <div className="space-y-3">
-            {[1, 2].map(i => <div key={i} className="h-24 bg-gray-200 rounded-lg" />)}
-          </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-200 rounded-lg" />)}
         </div>
       </div>
     );
@@ -479,14 +541,16 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
     );
   }
 
+  const isLocked = !!module.unlock_date && new Date(module.unlock_date) > new Date();
+
   return (
     <div className="w-full min-w-0">
       {/* Topic header */}
       <div className="flex items-start justify-between gap-4 mb-1">
         <h1 className="text-2xl font-bold text-gray-900">T{topicIndex} {module.title}</h1>
-        {module.unlock_date && (
+        {isLocked && (
           <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded flex-shrink-0">
-            Unlocks {fmt(module.unlock_date)}
+            🔒 Available from {fmt(module.unlock_date)}
           </span>
         )}
       </div>
@@ -496,9 +560,10 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
       {module.description && (
         <div className="mb-6">
           <p className="text-sm font-semibold text-gray-700 mb-2">Objectives:</p>
-          <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
-            {module.description}
-          </div>
+          <div
+            className="prose prose-sm max-w-none text-gray-600"
+            dangerouslySetInnerHTML={{ __html: module.description }}
+          />
         </div>
       )}
 
@@ -508,103 +573,54 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
           <p className="text-gray-400">No items in this topic yet.</p>
         </div>
       ) : (
-        <div className="flex gap-6">
-          {/* ── Main assessments column ──────────────────────── */}
-          <div className="flex-1 min-w-0">
-            {mainItems.length > 0 && (
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold text-gray-900">Assessments</h2>
-                  <button type="button" className="text-xs text-[#4c1d95] hover:underline">
-                    ∨ Collapse All
-                  </button>
-                </div>
-                {mainItems.map(item => {
-                  if (item.item_type === 'assessment' && item.detail?.kind === 'assessment') {
-                    return <AssessmentItem key={item.id} item={item} />;
-                  }
-                  if (item.item_type === 'assignment' && item.detail?.kind === 'assignment') {
-                    return <AssignmentItem key={item.id} item={item} />;
-                  }
-                  if (item.item_type === 'live_session' && item.detail?.kind === 'live_session') {
-                    return <LiveSessionItem key={item.id} item={item} />;
-                  }
-                  return null;
-                })}
-              </div>
-            )}
-
-            {/* Lessons in main column (if no resource items, show here too) */}
-            {resourceItems.length === 0 && mainItems.length === 0 && (
-              <p className="text-sm text-gray-400">No content items found.</p>
-            )}
-          </div>
-
-          {/* ── Resources sidebar ───────────────────────────── */}
-          {resourceItems.length > 0 && (
-            <div className="w-72 flex-shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-bold text-gray-900">Resources</h2>
-                <button type="button" className="text-xs text-[#4c1d95] hover:underline">
-                  ∨ Collapse All
-                </button>
-              </div>
+        <div className="space-y-8">
+          {/* ── Lessons & Links ──────────────────────────────── */}
+          {lessonItems.length > 0 && (
+            <div>
+              <h2 className="text-base font-bold text-gray-900 mb-3">Lessons</h2>
               <div className="space-y-3">
-                {resourceItems.map(item => {
+                {lessonItems.map(item => {
                   if (item.item_type === 'link') {
                     return (
-                      <div key={item.id} className="bg-white rounded-lg border border-gray-200 p-3">
-                        <div className="flex items-start gap-2">
-                          <span className="text-lg flex-shrink-0">🔗</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 line-clamp-2">{item.item_title ?? 'Resource'}</p>
-                            {item.item_url && (
-                              <a href={item.item_url} target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-[#4c1d95] hover:underline mt-1 block truncate">
-                                Open →
-                              </a>
-                            )}
-                          </div>
+                      <div key={item.id} className="bg-white rounded-lg border border-gray-200 px-4 py-3 flex items-center gap-3">
+                        <span className="text-xl flex-shrink-0">🔗</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{item.item_title ?? 'Resource'}</p>
                         </div>
-                      </div>
-                    );
-                  }
-                  if (item.item_type === 'lesson' && item.detail?.kind === 'lesson') {
-                    const l = item.detail;
-                    const prog = item.progress?.type === 'lesson' ? item.progress.status : 'not_started';
-                    const progColors = { not_started: 'bg-gray-100 text-gray-500', in_progress: 'bg-amber-100 text-amber-700', completed: 'bg-green-100 text-green-700' };
-                    const progLabels = { not_started: 'Not Started', in_progress: 'In Progress', completed: '✓ Completed' };
-                    return (
-                      <div key={item.id} className="bg-white rounded-lg border border-gray-200 p-3">
-                        <div className="flex items-start gap-2">
-                          <span className="text-lg flex-shrink-0">{LESSON_ICONS[l.type] ?? '📄'}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 line-clamp-2">{l.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${progColors[prog]}`}>
-                                {progLabels[prog]}
-                              </span>
-                              {l.duration_mins && <span className="text-xs text-gray-400">{l.duration_mins} min</span>}
-                            </div>
-                            {l.content_url && (
-                              <a href={l.content_url} target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-[#4c1d95] hover:underline mt-1 block">
-                                Open →
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                        {item.is_mandatory && (
-                          <div className="mt-2 text-[10px] font-semibold text-red-600 flex items-center gap-1">
-                            <span>Required</span>
-                          </div>
+                        {item.item_url && (
+                          <a href={item.item_url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-[#4c1d95] hover:underline font-medium flex-shrink-0">
+                            Open →
+                          </a>
                         )}
                       </div>
                     );
                   }
+                  if (item.item_type === 'lesson' && item.detail?.kind === 'lesson') {
+                    return <LessonItem key={item.id} item={item} />;
+                  }
                   return null;
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── Assessments & Activities ─────────────────────── */}
+          {activityItems.length > 0 && (
+            <div>
+              <h2 className="text-base font-bold text-gray-900 mb-3">Assessments</h2>
+              {activityItems.map(item => {
+                if (item.item_type === 'assessment' && item.detail?.kind === 'assessment') {
+                  return <AssessmentItem key={item.id} item={item} offeringId={offeringId} />;
+                }
+                if (item.item_type === 'assignment' && item.detail?.kind === 'assignment') {
+                  return <AssignmentItem key={item.id} item={item} />;
+                }
+                if (item.item_type === 'live_session' && item.detail?.kind === 'live_session') {
+                  return <LiveSessionItem key={item.id} item={item} />;
+                }
+                return null;
+              })}
             </div>
           )}
         </div>

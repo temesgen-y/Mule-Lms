@@ -29,19 +29,7 @@ const NAV = [
 ];
 
 const FORUMS = [
-  { href: 'forums',    label: 'Discussion Forums', icon: '💬', badge: null as number | null },
-  { href: 'questions', label: 'Class Questions',   icon: '👤', badge: null as number | null },
-];
-
-const MATERIALS_STATIC = [
-  { href: 'resources', label: 'Class Resources', short: '📚' },
-];
-
-const TOPIC_SLUGS = [
-  { href: 't1', short: 'T1', defaultLabel: 'T1 Topic 1' },
-  { href: 't2', short: 'T2', defaultLabel: 'T2 Topic 2' },
-  { href: 't3', short: 'T3', defaultLabel: 'T3 Topic 3' },
-  { href: 't4', short: 'T4', defaultLabel: 'T4 Topic 4' },
+  { href: 'forums', label: 'Forums', icon: '💬', badge: null as number | null },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,7 +72,6 @@ export default function ClassLayout({ children }: { children: React.ReactNode })
 
   const [time, setTime] = useState(formatGcuTime());
   const [course, setCourse] = useState<CourseInfo | null>(null);
-  const [moduleLabels, setModuleLabels] = useState<string[]>([]);
 
   // Live clock
   useEffect(() => {
@@ -124,17 +111,6 @@ export default function ClassLayout({ children }: { children: React.ReactNode })
         });
       });
 
-    // Fetch module titles (up to 4)
-    supabase
-      .from('course_modules')
-      .select('title, sort_order')
-      .eq('offering_id', id)
-      .eq('is_visible', true)
-      .order('sort_order', { ascending: true })
-      .limit(4)
-      .then(({ data }) => {
-        if (data) setModuleLabels((data as any[]).map(m => m.title));
-      });
   }, [id]);
 
   const isActive = (href: string) => {
@@ -271,44 +247,6 @@ export default function ClassLayout({ children }: { children: React.ReactNode })
                 )}
               </Link>
             ))}
-          </nav>
-
-          <div className="border-t border-gray-200 my-2 w-full" />
-
-          {/* CLASSROOM MATERIALS */}
-          {!collapsed && (
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Classroom Materials</p>
-          )}
-          <nav className={`space-y-1 ${collapsed ? 'flex flex-col items-center gap-0.5' : ''}`}>
-            {MATERIALS_STATIC.map(item => (
-              <Link
-                key={item.href}
-                href={`${base}/${item.href}`}
-                className={`flex items-center rounded text-sm font-medium transition-colors ${
-                  collapsed ? 'justify-center w-10 py-1.5 text-xs' : 'px-3 py-2 gap-2'
-                } ${isActive(item.href) ? 'bg-[#4c1d95] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                title={collapsed ? item.label : undefined}
-              >
-                {collapsed ? <span>{item.short}</span> : <span>{item.label}</span>}
-              </Link>
-            ))}
-            {TOPIC_SLUGS.map((item, idx) => {
-              const label = moduleLabels[idx]
-                ? `T${idx + 1} ${moduleLabels[idx]}`
-                : item.defaultLabel;
-              return (
-                <Link
-                  key={item.href}
-                  href={`${base}/${item.href}`}
-                  className={`flex items-center rounded text-sm font-medium transition-colors ${
-                    collapsed ? 'justify-center w-10 py-1.5 text-xs' : 'px-3 py-2 gap-2'
-                  } ${isActive(item.href) ? 'bg-[#4c1d95] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                  title={collapsed ? label : undefined}
-                >
-                  {collapsed ? <span>{item.short}</span> : <span className="truncate">{label}</span>}
-                </Link>
-              );
-            })}
           </nav>
 
           <div className="border-t border-gray-200 my-2 w-full" />
