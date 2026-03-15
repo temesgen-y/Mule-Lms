@@ -232,29 +232,16 @@ function InnerLayout({
           {/* Left: hamburger + logo + nav buttons */}
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Sidebar toggle */}
-            {isClassView ? (
-              <button
-                type="button"
-                onClick={toggleClassSidebar}
-                className="p-2 rounded text-white/80 hover:bg-white/10 leading-none"
-                aria-label="Toggle class sidebar"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                  <path fillRule="evenodd" d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
-                </svg>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 rounded text-white/80 hover:bg-white/10 leading-none"
-                aria-label="Toggle navigation"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                  <path fillRule="evenodd" d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
-                </svg>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 rounded text-white/80 hover:bg-white/10 leading-none"
+              aria-label="Toggle navigation"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                <path fillRule="evenodd" d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
+              </svg>
+            </button>
 
             {/* Logo */}
             <Link href="/dashboard" className="flex items-center gap-1.5 mr-2">
@@ -432,8 +419,8 @@ function InnerLayout({
       {/* ── Body ─────────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
 
-        {/* Student sidebar — hidden in class view */}
-        {!isClassView && sidebarOpen && (
+        {/* Student sidebar */}
+        {sidebarOpen && (
           <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
             <nav className="py-3 px-2 flex-1">
               {NAV_GROUPS.map((group, gi) => {
