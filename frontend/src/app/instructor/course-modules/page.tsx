@@ -23,7 +23,6 @@ const initialForm = {
   offeringId: '',
   title: '',
   description: '',
-  sortOrder: '0',
   isVisible: true,
   unlockDate: '',
 };
@@ -160,10 +159,10 @@ export default function InstructorCourseModulesPage() {
   // ─── Modal helpers ────────────────────────────────────────────────
   const openAddModal = useCallback(() => {
     setEditingId(null);
-    setForm({ ...initialForm, offeringId: filterOffering });
+    setForm({ ...initialForm, offeringId: filterOffering || offerings[0]?.id || '' });
     setSubmitError('');
     setModalOpen(true);
-  }, [filterOffering]);
+  }, [filterOffering, offerings]);
 
   const openEditModal = useCallback((m: CourseModule) => {
     setEditingId(m.id);
@@ -171,7 +170,6 @@ export default function InstructorCourseModulesPage() {
       offeringId: m.offeringId,
       title: m.title,
       description: m.description,
-      sortOrder: String(m.sortOrder),
       isVisible: m.isVisible,
       unlockDate: m.unlockDate,
     });
@@ -196,20 +194,32 @@ export default function InstructorCourseModulesPage() {
     setSubmitError('');
 
     const title = form.title.trim();
-    const sortOrder = parseInt(form.sortOrder, 10);
 
     if (!form.offeringId) { setSubmitError('Course offering is required.'); return; }
     if (!title) { setSubmitError('Title is required.'); return; }
-    if (isNaN(sortOrder) || sortOrder < 0) { setSubmitError('Sort order must be 0 or greater.'); return; }
 
     setIsSubmitting(true);
     const supabase = createClient();
+
+    // Auto-calculate sort_order as MAX + 1 for new modules
+    let sortOrder = 1;
+    if (!editingId) {
+      const { data: maxData } = await supabase
+        .from('course_modules')
+        .select('sort_order')
+        .eq('offering_id', form.offeringId)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      if (maxData && maxData.length > 0) {
+        sortOrder = ((maxData[0] as any).sort_order ?? 0) + 1;
+      }
+    }
 
     const payload = {
       offering_id: form.offeringId,
       title,
       description: form.description.trim() || null,
-      sort_order: sortOrder,
+      ...(editingId ? {} : { sort_order: sortOrder }),
       is_visible: form.isVisible,
       unlock_date: form.unlockDate || null,
     };
@@ -365,22 +375,14 @@ export default function InstructorCourseModulesPage() {
                   />
                 </div>
 
-                {/* Sort Order & Unlock Date */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="cm-order" className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label>
-                    <input id="cm-order" type="number" min={0} value={form.sortOrder}
-                      onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="cm-unlock" className="block text-sm font-medium text-gray-700 mb-1">Unlock Date</label>
-                    <input id="cm-unlock" type="date" value={form.unlockDate}
-                      onChange={(e) => setForm((f) => ({ ...f, unlockDate: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
+                {/* Release Date */}
+                <div>
+                  <label htmlFor="cm-unlock" className="block text-sm font-medium text-gray-700 mb-1">Release Date</label>
+                  <input id="cm-unlock" type="date" value={form.unlockDate}
+                    onChange={(e) => setForm((f) => ({ ...f, unlockDate: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Leave blank to make available immediately.</p>
                 </div>
 
                 {/* Visible */}

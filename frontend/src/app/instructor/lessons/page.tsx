@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import RichTextEditor from '@/components/shared/RichTextEditor';
 
 type Lesson = {
   id: string;
@@ -33,6 +34,12 @@ const TYPE_COLORS: Record<string, string> = {
   link: 'bg-green-100 text-green-700',
   scorm: 'bg-purple-100 text-purple-700',
 };
+const URL_LABELS: Record<string, string> = {
+  video: 'Video URL',
+  document: 'PDF URL',
+  link: 'Link URL',
+  scorm: 'SCORM URL',
+};
 
 const initialForm = {
   offeringId: '',
@@ -43,6 +50,7 @@ const initialForm = {
   durationMins: '',
   isVisible: true,
   moduleId: '',
+  isMandatory: true,
 };
 
 export default function InstructorLessonsPage() {
@@ -189,7 +197,7 @@ export default function InstructorLessonsPage() {
     fetchLessons();
   }, [fetchOfferings, fetchLessons]);
 
-  // Fetch modules when form offering changes (for the "Add to module" picker)
+  // Fetch modules when form offering changes and auto-select first module
   useEffect(() => {
     if (!form.offeringId) { setModules([]); return; }
     const supabase = createClient();
@@ -199,17 +207,23 @@ export default function InstructorLessonsPage() {
       .eq('offering_id', form.offeringId)
       .order('sort_order', { ascending: true })
       .then(({ data }) => {
-        setModules((data ?? []).map((m: any) => ({ id: m.id, label: m.title })));
+        const opts = (data ?? []).map((m: any) => ({ id: m.id, label: m.title }));
+        setModules(opts);
+        // Auto-select first module if none selected
+        if (opts.length > 0) {
+          setForm((f) => ({ ...f, moduleId: f.moduleId || opts[0].id }));
+        }
       });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.offeringId]);
 
   // ─── Modal helpers ────────────────────────────────────────────────
   const openAddModal = useCallback(() => {
     setEditingId(null);
-    setForm({ ...initialForm, offeringId: filterOffering });
+    setForm({ ...initialForm, offeringId: filterOffering || offerings[0]?.id || '' });
     setSubmitError('');
     setModalOpen(true);
-  }, [filterOffering]);
+  }, [filterOffering, offerings]);
 
   const openEditModal = useCallback((l: Lesson) => {
     setEditingId(l.id);
@@ -222,6 +236,7 @@ export default function InstructorLessonsPage() {
       durationMins: l.durationMins !== null ? String(l.durationMins) : '',
       isVisible: l.isVisible,
       moduleId: '',
+      isMandatory: true,
     });
     setSubmitError('');
     setModalOpen(true);
@@ -248,6 +263,7 @@ export default function InstructorLessonsPage() {
 
     if (!form.offeringId) { setSubmitError('Course offering is required.'); return; }
     if (!title) { setSubmitError('Title is required.'); return; }
+    if (!editingId && !form.moduleId) { setSubmitError('Module is required. Create a module first.'); return; }
     if (durationMins !== null && (isNaN(durationMins) || durationMins < 1)) {
       setSubmitError('Duration must be at least 1 minute.'); return;
     }
@@ -285,16 +301,28 @@ export default function InstructorLessonsPage() {
       return;
     }
 
-    // If a module was selected (only on create), also add this lesson as a module item
+    // Add lesson to module on create
     if (!editingId && newLessonId && form.moduleId) {
+      // Auto-calculate sort_order as MAX + 1
+      let itemSortOrder = 1;
+      const { data: maxItemData } = await supabase
+        .from('course_module_items')
+        .select('sort_order')
+        .eq('module_id', form.moduleId)
+        .order('sort_order', { ascending: false })
+        .limit(1);
+      if (maxItemData && maxItemData.length > 0) {
+        itemSortOrder = ((maxItemData[0] as any).sort_order ?? 0) + 1;
+      }
+
       const { error: itemError } = await supabase.from('course_module_items').insert({
         module_id: form.moduleId,
         offering_id: form.offeringId,
         item_type: 'lesson',
         lesson_id: newLessonId,
-        sort_order: 9999,
+        sort_order: itemSortOrder,
         is_visible: true,
-        is_mandatory: false,
+        is_mandatory: form.isMandatory,
       });
       if (itemError) {
         toast.warning('Lesson created, but failed to add to module: ' + itemError.message);
@@ -308,7 +336,7 @@ export default function InstructorLessonsPage() {
       }
     }
 
-    toast.success(editingId ? 'Lesson updated.' : 'Lesson created. Remember to add it to a module so students can see it.');
+    toast.success(editingId ? 'Lesson updated.' : 'Lesson created.');
     setModalOpen(false);
     setForm(initialForm);
     fetchLessons();
@@ -477,48 +505,55 @@ export default function InstructorLessonsPage() {
 
                 {/* Content URL */}
                 <div>
-                  <label htmlFor="ls-url" className="block text-sm font-medium text-gray-700 mb-1">Content URL</label>
+                  <label htmlFor="ls-url" className="block text-sm font-medium text-gray-700 mb-1">
+                    {URL_LABELS[form.type] ?? 'Content URL'}
+                  </label>
                   <input id="ls-url" type="url" value={form.contentUrl}
                     placeholder="https://..."
                     onChange={(e) => setForm((f) => ({ ...f, contentUrl: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Video link, PDF URL, external link, or SCORM package URL.</p>
                 </div>
 
                 {/* Content Body */}
                 <div>
-                  <label htmlFor="ls-body" className="block text-sm font-medium text-gray-700 mb-1">Content Body</label>
-                  <textarea id="ls-body" rows={4} value={form.contentBody}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Content Body</label>
+                  <RichTextEditor
+                    value={form.contentBody}
+                    onChange={(html) => setForm((f) => ({ ...f, contentBody: html }))}
                     placeholder="Optional inline content or description..."
-                    onChange={(e) => setForm((f) => ({ ...f, contentBody: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                    minHeight="120px"
                   />
                 </div>
 
                 {/* Add to module (create only) */}
                 {!editingId && (
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-amber-800">
-                      Students only see lessons that are added to a module.
-                    </p>
+                  <div className="space-y-3">
                     <div>
                       <label htmlFor="ls-module" className="block text-sm font-medium text-gray-700 mb-1">
-                        Add to Module <span className="font-normal text-gray-400">(optional, recommended)</span>
+                        Module *
                       </label>
-                      <select id="ls-module" value={form.moduleId}
-                        onChange={(e) => setForm((f) => ({ ...f, moduleId: e.target.value }))}
-                        disabled={!form.offeringId}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
-                      >
-                        <option value="">— Skip for now —</option>
-                        {modules.map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
-                        ))}
-                      </select>
-                      {form.offeringId && modules.length === 0 && (
-                        <p className="text-xs text-gray-400 mt-1">No modules found for this offering. Create modules first.</p>
+                      {form.offeringId && modules.length === 0 ? (
+                        <p className="text-sm text-red-500">No modules yet. Create a module first.</p>
+                      ) : (
+                        <select id="ls-module" value={form.moduleId}
+                          onChange={(e) => setForm((f) => ({ ...f, moduleId: e.target.value }))}
+                          disabled={!form.offeringId}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                        >
+                          <option value="">— Select Module —</option>
+                          {modules.map((m) => (
+                            <option key={m.id} value={m.id}>{m.label}</option>
+                          ))}
+                        </select>
                       )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input id="ls-mandatory" type="checkbox" checked={form.isMandatory}
+                        onChange={(e) => setForm((f) => ({ ...f, isMandatory: e.target.checked }))}
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="ls-mandatory" className="text-sm font-medium text-gray-700">Mandatory for students</label>
                     </div>
                   </div>
                 )}
@@ -537,7 +572,7 @@ export default function InstructorLessonsPage() {
                 <button type="button" onClick={closeModal} disabled={isSubmitting}
                   className="px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition disabled:opacity-50"
                 >Cancel</button>
-                <button type="submit" disabled={isSubmitting}
+                <button type="submit" disabled={isSubmitting || (!editingId && form.offeringId !== '' && modules.length === 0)}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition disabled:opacity-50 min-w-[120px]"
                 >
                   {isSubmitting ? (editingId ? 'Saving...' : 'Creating...') : (editingId ? 'Save Changes' : 'Add Lesson')}

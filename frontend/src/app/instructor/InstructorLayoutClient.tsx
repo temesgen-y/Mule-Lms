@@ -43,7 +43,6 @@ function buildNavGroups(offeringId: string | null): NavGroup[] {
       items: [
         { href: '/instructor/dashboard',      label: 'Calendar',       icon: 'calendar' },
         { href: '/instructor/course-modules', label: 'Course Content', icon: 'course-modules' },
-        { href: '/instructor/lessons',        label: 'Lessons',        icon: 'lessons' },
         { href: '/instructor/live-sessions',  label: 'Live Sessions',  icon: 'live-sessions' },
         { href: '/instructor/assessments',    label: 'Assessments',    icon: 'assessments' },
         { href: '/instructor/assignments',    label: 'Assignments',    icon: 'assignments' },
