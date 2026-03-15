@@ -308,7 +308,12 @@ export default function AddLessonModal({
                 <select
                   id="al-type"
                   value={lessonType}
-                  onChange={(e) => setLessonType(e.target.value)}
+                  onChange={(e) => {
+                    setLessonType(e.target.value);
+                    if (e.target.value === 'document' || e.target.value === 'link') {
+                      setDuration('');
+                    }
+                  }}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                 >
                   {LESSON_TYPES.map((t) => (
@@ -316,7 +321,7 @@ export default function AddLessonModal({
                   ))}
                 </select>
               </div>
-              {lessonType !== 'link' && (
+              {(lessonType === 'video' || lessonType === 'scorm') && (
                 <div>
                   <label htmlFor="al-duration" className="block text-sm font-medium text-gray-700 mb-1">
                     Duration (mins)

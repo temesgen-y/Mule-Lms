@@ -270,8 +270,11 @@ function SortableModuleCard({
 
       {/* Release date */}
       {module.unlock_date && expanded && (
-        <div className="px-4 py-1.5 text-xs text-amber-600 bg-amber-50 border-b border-amber-100">
-          📅 Released: {fmt(module.unlock_date)}
+        <div className="px-4 py-1.5 border-b border-gray-100">
+          <p className="text-xs text-gray-400 flex items-center gap-1">
+            <span>📅</span>
+            Released: {fmt(module.unlock_date)}
+          </p>
         </div>
       )}
 
