@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ClassSidebarProvider, useClassSidebar } from './ClassSidebarContext';
@@ -20,20 +20,42 @@ type Notif = {
   type: string | null;
 };
 
-const NAV_ITEMS = [
-  { href: '/dashboard',                label: 'Home',           icon: '🏠', exact: true  },
-  { href: '/dashboard/courses',        label: 'My Courses',     icon: '📚', exact: false },
-  { href: '/dashboard/grade-reports',  label: 'Grade Reports',  icon: '📑', exact: false },
-  { href: '/dashboard/assignments',    label: 'Assignments',    icon: '📝', exact: false },
-  { href: '/dashboard/assessments',  label: 'Assessments',   icon: '📋', exact: false },
-  { href: '/dashboard/grades',       label: 'Grades',        icon: '📊', exact: false },
-  { href: '/dashboard/attendance',   label: 'Attendance',    icon: '✅', exact: false },
-  { href: '/dashboard/certificates', label: 'Certificates',  icon: '🏆', exact: false },
-  { href: '/dashboard/announcements',label: 'Announcements', icon: '📢', exact: false },
-  { href: '/dashboard/notifications',label: 'Notifications', icon: '🔔', exact: false },
-  { href: '/dashboard/forums',        label: 'Forums',        icon: '💬', exact: false },
-  { href: '/dashboard/messages',      label: 'Messages',      icon: '✉️',  exact: false },
-  { href: '/dashboard/study-groups',  label: 'Study Groups',  icon: '👥', exact: false },
+type NavItem = { href: string; label: string; icon: string; exact: boolean };
+type NavGroup = { section: string | null; items: NavItem[] };
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    section: null,
+    items: [
+      { href: '/dashboard',         label: 'Home',       icon: '🏠', exact: true  },
+      { href: '/dashboard/courses', label: 'My Courses', icon: '📚', exact: false },
+    ],
+  },
+  {
+    section: 'LEARNING',
+    items: [
+      { href: '/dashboard/assessments', label: 'Assessments', icon: '📋', exact: false },
+      { href: '/dashboard/assignments', label: 'Assignments',  icon: '📝', exact: false },
+    ],
+  },
+  {
+    section: 'MY PROGRESS',
+    items: [
+      { href: '/dashboard/grades',        label: 'My Grades',    icon: '📊', exact: false },
+      { href: '/dashboard/attendance',    label: 'Attendance',   icon: '✅', exact: false },
+      { href: '/dashboard/live-sessions', label: 'Live Sessions', icon: '🎥', exact: false },
+      { href: '/dashboard/certificates',  label: 'Certificates', icon: '🏆', exact: false },
+    ],
+  },
+  {
+    section: 'COMMUNICATION',
+    items: [
+      { href: '/dashboard/announcements', label: 'Announcements', icon: '📢', exact: false },
+      { href: '/dashboard/notifications', label: 'Notifications',  icon: '🔔', exact: false },
+      { href: '/dashboard/messages',      label: 'Messages',       icon: '✉️',  exact: false },
+      { href: '/dashboard/forums',        label: 'Forums',         icon: '💬', exact: false },
+    ],
+  },
 ];
 
 function getInitials(name: string): string {
@@ -413,47 +435,51 @@ function InnerLayout({
         {/* Student sidebar — hidden in class view */}
         {!isClassView && sidebarOpen && (
           <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
-            <nav className="py-3 px-2 space-y-0.5 flex-1">
-              {NAV_ITEMS.map(item => {
-                const active = isActive(item.href, item.exact);
+            <nav className="py-3 px-2 flex-1">
+              {NAV_GROUPS.map((group, gi) => {
+                const items = group.section === 'COMMUNICATION' && studyGroupsEnabled
+                  ? [...group.items, { href: '/dashboard/study-groups', label: 'Study Groups', icon: '👥', exact: false }]
+                  : group.items;
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      active
-                        ? 'bg-[#4c1d95] text-white shadow-sm'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    }`}
-                  >
-                    <span className="text-base w-5 text-center leading-none" aria-hidden>{item.icon}</span>
-                    <span className="flex-1">{item.label}</span>
-                    {item.href === '/dashboard/assignments' && pendingAssignmentCount > 0 && (
-                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>
-                        {pendingAssignmentCount > 9 ? '9+' : pendingAssignmentCount}
-                      </span>
+                  <div key={gi} className={gi > 0 ? 'mt-4' : ''}>
+                    {group.section && (
+                      <p className="px-3 mb-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        {group.section}
+                      </p>
                     )}
-                    {item.href === '/dashboard/notifications' && unreadCount > 0 && (
-                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    )}
-                    {item.href === '/dashboard/announcements' && announcementUnreadCount > 0 && (
-                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-amber-300 text-gray-900' : 'bg-amber-400 text-gray-900'}`}>
-                        {announcementUnreadCount > 9 ? '9+' : announcementUnreadCount}
-                      </span>
-                    )}
-                    {item.href === '/dashboard/messages' && unreadMsgCount > 0 && (
-                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>
-                        {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
-                      </span>
-                    )}
-                    {item.href === '/dashboard/study-groups' && unreadGroupCount > 0 && (
-                      <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>
-                        {unreadGroupCount > 9 ? '9+' : unreadGroupCount}
-                      </span>
-                    )}
-                  </Link>
+                    <div className="space-y-0.5">
+                      {items.map(item => {
+                        const active = isActive(item.href, item.exact);
+                        let badge: React.ReactNode = null;
+                        if (item.href === '/dashboard/assignments' && pendingAssignmentCount > 0) {
+                          badge = <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>{pendingAssignmentCount > 9 ? '9+' : pendingAssignmentCount}</span>;
+                        } else if (item.href === '/dashboard/notifications' && unreadCount > 0) {
+                          badge = <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>{unreadCount > 9 ? '9+' : unreadCount}</span>;
+                        } else if (item.href === '/dashboard/announcements' && announcementUnreadCount > 0) {
+                          badge = <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-amber-300 text-gray-900' : 'bg-amber-400 text-gray-900'}`}>{announcementUnreadCount > 9 ? '9+' : announcementUnreadCount}</span>;
+                        } else if (item.href === '/dashboard/messages' && unreadMsgCount > 0) {
+                          badge = <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>{unreadMsgCount > 9 ? '9+' : unreadMsgCount}</span>;
+                        } else if (item.href === '/dashboard/study-groups' && unreadGroupCount > 0) {
+                          badge = <span className={`w-5 h-5 text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'bg-white/30 text-white' : 'bg-blue-500 text-white'}`}>{unreadGroupCount > 9 ? '9+' : unreadGroupCount}</span>;
+                        }
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              active
+                                ? 'bg-[#4c1d95] text-white shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                            }`}
+                          >
+                            <span className="text-base w-5 text-center leading-none" aria-hidden>{item.icon}</span>
+                            <span className="flex-1">{item.label}</span>
+                            {badge}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </nav>
