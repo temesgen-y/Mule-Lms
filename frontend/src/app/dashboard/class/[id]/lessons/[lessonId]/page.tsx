@@ -23,18 +23,30 @@ type NavItem = { lessonId: string; title: string };
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractYoutubeId(url: string): string | null {
-  // Try each pattern independently — most permissive first
-  const patterns = [
-    /[?&]v=([A-Za-z0-9_-]{11})/,         // ?v=ID or &v=ID  (all watch URLs)
-    /youtu\.be\/([A-Za-z0-9_-]{11})/,     // youtu.be/ID
-    /\/embed\/([A-Za-z0-9_-]{11})/,       // /embed/ID
-    /\/shorts\/([A-Za-z0-9_-]{11})/,      // /shorts/ID
-    /\/v\/([A-Za-z0-9_-]{11})/,           // /v/ID  (old format)
-  ];
-  for (const p of patterns) {
-    const m = url.match(p);
+  if (!url) return null;
+  // Only attempt YouTube detection if the URL looks like YouTube
+  if (!/youtube|youtu\.be/i.test(url)) return null;
+
+  try {
+    // Ensure protocol exists so URL() can parse it
+    const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const u = new URL(fullUrl);
+
+    // Standard watch URL: youtube.com/watch?v=ID
+    if (u.searchParams.has('v')) return u.searchParams.get('v');
+
+    // Short URL: youtu.be/ID
+    if (u.hostname === 'youtu.be') return u.pathname.replace(/^\//, '').split('?')[0] || null;
+
+    // Path-based: /embed/ID  /shorts/ID  /live/ID  /v/ID
+    const m = u.pathname.match(/\/(embed|shorts|live|v)\/([A-Za-z0-9_-]+)/);
+    if (m) return m[2];
+  } catch {
+    // URL parsing failed — fall back to simple regex
+    const m = url.match(/[?&]v=([A-Za-z0-9_-]+)/);
     if (m) return m[1];
   }
+
   return null;
 }
 
