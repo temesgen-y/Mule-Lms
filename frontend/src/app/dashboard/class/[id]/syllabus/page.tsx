@@ -18,7 +18,6 @@ type Assessment = {
   title: string;
   type: string;
   totalMarks: number;
-  weightPct: number | null;
   availableFrom: string | null;
   availableUntil: string | null;
 };
@@ -28,7 +27,6 @@ type Assignment = {
   title: string;
   dueDate: string | null;
   maxScore: number;
-  weightPct: number | null;
 };
 
 function fmt(d: string | null | undefined): string {
@@ -40,6 +38,7 @@ export default function ClassSyllabusPage() {
   const params = useParams();
   const offeringId = params?.id as string;
 
+  const [syllabusText, setSyllabusText] = useState<string | null>(null);
   const [modules, setModules] = useState<Module[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -50,7 +49,12 @@ export default function ClassSyllabusPage() {
     (async () => {
       const supabase = createClient();
 
-      const [modsRes, assessRes, assignRes] = await Promise.all([
+      const [offeringRes, modsRes, assessRes, assignRes] = await Promise.all([
+        supabase
+          .from('course_offerings')
+          .select('syllabus')
+          .eq('id', offeringId)
+          .single(),
         supabase
           .from('course_modules')
           .select('id, title, description, sort_order, unlock_date, course_module_items(id)')
@@ -59,20 +63,23 @@ export default function ClassSyllabusPage() {
           .order('sort_order', { ascending: true }),
         supabase
           .from('assessments')
-          .select('id, title, type, total_marks, weight_pct, available_from, available_until')
+          .select('id, title, type, total_marks, available_from, available_until')
           .eq('offering_id', offeringId)
           .eq('status', 'published')
           .order('available_from', { ascending: true }),
         supabase
           .from('assignments')
-          .select('id, title, due_date, max_score, weight_pct')
+          .select('id, title, due_date, max_score')
           .eq('offering_id', offeringId)
           .eq('status', 'published')
           .order('due_date', { ascending: true }),
       ]);
 
+      const text = (offeringRes.data as any)?.syllabus ?? null;
+      setSyllabusText(text && text.trim() ? text.trim() : null);
+
       setModules(
-        ((modsRes.data ?? []) as any[]).map(m => ({
+        ((modsRes.data ?? []) as any[]).map((m: any) => ({
           id: m.id,
           title: m.title,
           description: m.description,
@@ -87,7 +94,6 @@ export default function ClassSyllabusPage() {
           title: a.title,
           type: a.type,
           totalMarks: a.total_marks,
-          weightPct: a.weight_pct,
           availableFrom: a.available_from,
           availableUntil: a.available_until,
         }))
@@ -98,7 +104,6 @@ export default function ClassSyllabusPage() {
           title: a.title,
           dueDate: a.due_date,
           maxScore: a.max_score,
-          weightPct: a.weight_pct,
         }))
       );
       setLoading(false);
@@ -125,6 +130,21 @@ export default function ClassSyllabusPage() {
         </div>
         <div className="border-t border-gray-200" />
       </div>
+
+      {/* Instructor-written syllabus */}
+      {syllabusText && (
+        <section>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+              <span className="text-base" aria-hidden>📄</span>
+              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Course Syllabus</h2>
+            </div>
+            <div className="px-5 py-5 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+              {syllabusText}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Course Modules */}
       <section>
@@ -168,7 +188,7 @@ export default function ClassSyllabusPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Title', 'Type', 'Points', 'Weight', 'Available Window'].map(h => (
+                  {['Title', 'Type', 'Points', 'Available Window'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -183,7 +203,6 @@ export default function ClassSyllabusPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{a.totalMarks}</td>
-                    <td className="px-4 py-3 text-gray-500">{a.weightPct != null ? `${a.weightPct}%` : '—'}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {fmt(a.availableFrom)} – {fmt(a.availableUntil)}
                     </td>
@@ -205,7 +224,7 @@ export default function ClassSyllabusPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Title', 'Max Score', 'Weight', 'Due Date'].map(h => (
+                  {['Title', 'Max Score', 'Due Date'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -217,7 +236,6 @@ export default function ClassSyllabusPage() {
                     <tr key={a.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{a.title}</td>
                       <td className="px-4 py-3 text-gray-700">{a.maxScore}</td>
-                      <td className="px-4 py-3 text-gray-500">{a.weightPct != null ? `${a.weightPct}%` : '—'}</td>
                       <td className={`px-4 py-3 text-xs ${overdue ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
                         {fmt(a.dueDate)}
                       </td>
@@ -230,7 +248,7 @@ export default function ClassSyllabusPage() {
         </section>
       )}
 
-      {modules.length === 0 && assessments.length === 0 && assignments.length === 0 && (
+      {!syllabusText && modules.length === 0 && assessments.length === 0 && assignments.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <span className="text-4xl block mb-3">📋</span>
           <p className="text-gray-400">Syllabus content has not been published yet.</p>

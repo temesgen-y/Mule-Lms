@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -27,31 +27,46 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-const mainNav = [
-  { href: '/instructor/messages', label: 'Messages', icon: 'messages' },
-  { href: '/instructor/dashboard', label: 'Calendar', icon: 'calendar' },
-  { href: '/instructor/course-modules', label: 'Course Modules', icon: 'course-modules' },
-  { href: '/instructor/module-items', label: 'Module Items', icon: 'module-items' },
-  { href: '/instructor/lessons', label: 'Lessons', icon: 'lessons' },
-  { href: '/instructor/lesson-materials', label: 'Lesson Materials', icon: 'lesson-materials' },
-  { href: '/instructor/attachments', label: 'Attachments', icon: 'attachments' },
-  { href: '/instructor/live-sessions', label: 'Live Sessions', icon: 'live-sessions' },
-  { href: '/instructor/assessments', label: 'Assessments', icon: 'assessments' },
-  { href: '/instructor/questions', label: 'Questions', icon: 'questions' },
-  { href: '/instructor/question-options', label: 'Question Options', icon: 'question-options' },
-  { href: '/instructor/assignments', label: 'Assignments', icon: 'assignments' },
-  { href: '/instructor/grades', label: 'Grades', icon: 'grades' },
-  { href: '/instructor/gradebook-items', label: 'Gradebook Items', icon: 'gradebook-items' },
-  { href: '/instructor/attendance', label: 'Attendance', icon: 'attendance' },
-  { href: '/instructor/announcements', label: 'Announcements', icon: 'announcements' },
-  { href: '/instructor/notifications', label: 'Notifications', icon: 'notifications' },
-  { href: '/instructor/syllabus', label: 'Syllabus', icon: 'syllabus' },
-  { href: '/instructor/gradebook', label: 'Gradebook', icon: 'gradebook' },
-  { href: '/instructor/worklist', label: 'Worklist', icon: 'worklist' },
-  { href: '/instructor/forums', label: 'Forums', icon: 'forums' },
-  { href: '/instructor/discussion-forums', label: 'Discussion Forums', icon: 'discussion' },
-  { href: '/instructor/class-questions', label: 'Class Questions', icon: 'class-questions' },
-];
+type NavItem = { href: string; label: string; icon: string; badge?: 'announcements' | 'messages' | 'pending' };
+type NavGroup = { label: string; items: NavItem[] };
+
+function buildNavGroups(offeringId: string | null): NavGroup[] {
+  const gradebookHref = offeringId
+    ? `/instructor/courses/${offeringId}/gradebook`
+    : '/instructor/gradebook';
+  const syllabusHref = offeringId
+    ? `/instructor/courses/${offeringId}/syllabus`
+    : '/instructor/syllabus';
+  return [
+    {
+      label: 'Content',
+      items: [
+        { href: '/instructor/dashboard',      label: 'Calendar',       icon: 'calendar' },
+        { href: '/instructor/course-modules', label: 'Course Content', icon: 'course-modules' },
+        { href: '/instructor/lessons',        label: 'Lessons',        icon: 'lessons' },
+        { href: '/instructor/live-sessions',  label: 'Live Sessions',  icon: 'live-sessions' },
+        { href: '/instructor/assessments',    label: 'Assessments',    icon: 'assessments' },
+        { href: '/instructor/assignments',    label: 'Assignments',    icon: 'assignments' },
+        { href: syllabusHref,                 label: 'Syllabus',       icon: 'syllabus' },
+      ],
+    },
+    {
+      label: 'Students',
+      items: [
+        { href: gradebookHref,             label: 'Gradebook',  icon: 'gradebook', badge: 'pending' },
+        { href: '/instructor/attendance',  label: 'Attendance', icon: 'attendance' },
+      ],
+    },
+    {
+      label: 'Communication',
+      items: [
+        { href: '/instructor/announcements', label: 'Announcements', icon: 'announcements', badge: 'announcements' },
+        { href: '/instructor/forums',        label: 'Forums',         icon: 'forums' },
+        { href: '/instructor/notifications', label: 'Notifications',  icon: 'notifications' },
+      ],
+    },
+  ];
+}
 
 const classroomMaterials = [
   { href: '/instructor/resources', label: 'Class Resources' },
@@ -201,6 +216,7 @@ function NavIcon({ name }: { name: string }) {
 export type InstructorUser = { id: string; name: string; email: string };
 
 export type CourseInfo = {
+  offeringId: string;
   courseCode: string;
   courseTitle: string;
   termName: string;
@@ -237,6 +253,7 @@ export default function InstructorLayoutClient({
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
   const unreadMsgCount = useUnreadMessageCount(userId);
 
@@ -267,9 +284,26 @@ export default function InstructorLayoutClient({
       const uid = (userData as { id: string }).id;
       setUserId(uid);
       loadNotifs(uid);
+
+      // Pending grades: submitted assignments not yet graded
+      if (courseInfo?.offeringId) {
+        const { data: assignIds } = await supabase
+          .from('assignments')
+          .select('id')
+          .eq('offering_id', courseInfo.offeringId);
+        if (assignIds && assignIds.length > 0) {
+          const ids = (assignIds as any[]).map(a => a.id);
+          const { count } = await supabase
+            .from('assignment_submissions')
+            .select('id', { count: 'exact', head: true })
+            .in('assignment_id', ids)
+            .eq('status', 'submitted');
+          setPendingCount(count ?? 0);
+        }
+      }
     };
     init();
-  }, [loadNotifs]);
+  }, [loadNotifs, courseInfo?.offeringId]);
 
   const markRead = async (notifId: string) => {
     const supabase = createClient();
@@ -481,35 +515,46 @@ export default function InstructorLayoutClient({
               <div className="text-xs text-gray-500 mb-3">
                 {new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
               </div>
-              <nav className="space-y-0.5">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Main</div>
-                {mainNav.map((item) => {
-                  const isActive = pathname === item.href;
-                  const isAnnouncements = item.href === '/instructor/announcements';
-                  const isMessages = item.href === '/instructor/messages';
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                        isActive ? 'bg-primary/10 text-primary font-medium' : 'text-gray-700 hover:bg-gray-200/80'
-                      }`}
-                    >
-                      <NavIcon name={item.icon} />
-                      <span className="flex-1">{item.label}</span>
-                      {isAnnouncements && announcementUnreadCount > 0 && (
-                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-gray-900 text-[10px] font-bold">
-                          {announcementUnreadCount > 99 ? '99+' : announcementUnreadCount}
-                        </span>
-                      )}
-                      {isMessages && unreadMsgCount > 0 && (
-                        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold">
-                          {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
+              <nav className="space-y-4">
+                {buildNavGroups(courseInfo?.offeringId ?? null).map(group => (
+                  <div key={group.label}>
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-3 mb-1">
+                      {group.label}
+                    </div>
+                    <div className="space-y-0.5">
+                      {group.items.map(item => {
+                        const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                        let badge: React.ReactNode = null;
+                        if (item.badge === 'announcements' && announcementUnreadCount > 0) {
+                          badge = (
+                            <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-gray-900 text-[10px] font-bold">
+                              {announcementUnreadCount > 99 ? '99+' : announcementUnreadCount}
+                            </span>
+                          );
+                        } else if (item.badge === 'pending' && pendingCount > 0) {
+                          badge = (
+                            <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-orange-400 text-white text-[10px] font-bold">
+                              {pendingCount > 99 ? '99+' : pendingCount}
+                            </span>
+                          );
+                        }
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                              isActive ? 'bg-primary/10 text-primary font-medium' : 'text-gray-700 hover:bg-gray-200/80'
+                            }`}
+                          >
+                            <NavIcon name={item.icon} />
+                            <span className="flex-1">{item.label}</span>
+                            {badge}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </nav>
             </div>
           )}
