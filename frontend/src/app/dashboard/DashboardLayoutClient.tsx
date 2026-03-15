@@ -21,9 +21,10 @@ type Notif = {
 };
 
 const NAV_ITEMS = [
-  { href: '/dashboard',              label: 'Home',          icon: '🏠', exact: true  },
-  { href: '/dashboard/courses',      label: 'My Courses',    icon: '📚', exact: false },
-  { href: '/dashboard/assignments',  label: 'Assignments',   icon: '📝', exact: false },
+  { href: '/dashboard',                label: 'Home',           icon: '🏠', exact: true  },
+  { href: '/dashboard/courses',        label: 'My Courses',     icon: '📚', exact: false },
+  { href: '/dashboard/grade-reports',  label: 'Grade Reports',  icon: '📑', exact: false },
+  { href: '/dashboard/assignments',    label: 'Assignments',    icon: '📝', exact: false },
   { href: '/dashboard/assessments',  label: 'Assessments',   icon: '📋', exact: false },
   { href: '/dashboard/grades',       label: 'Grades',        icon: '📊', exact: false },
   { href: '/dashboard/attendance',   label: 'Attendance',    icon: '✅', exact: false },
