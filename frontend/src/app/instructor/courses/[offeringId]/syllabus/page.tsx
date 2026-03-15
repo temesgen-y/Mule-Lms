@@ -55,7 +55,8 @@ export default function InstructorSyllabusPage() {
       .eq('id', offeringId);
 
     if (saveErr) {
-      setError('Failed to save syllabus. Please try again.');
+      console.error('[Syllabus save]', saveErr);
+      setError(`Save failed: ${saveErr.message}`);
     } else {
       setOriginal(syllabus);
       setSaved(true);
@@ -95,6 +96,7 @@ export default function InstructorSyllabusPage() {
             </span>
           )}
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving || !isDirty}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#4c1d95] text-white text-sm font-medium hover:bg-[#3b1677] disabled:opacity-40 disabled:cursor-not-allowed"
