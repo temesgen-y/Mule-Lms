@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -23,7 +23,9 @@ type NavItem = { lessonId: string; title: string };
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractYoutubeId(url: string): string | null {
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\s/]+)/);
+  const m = url.match(
+    /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
+  );
   return m?.[1] ?? null;
 }
 
@@ -40,14 +42,18 @@ function VideoContent({ url, onEnded }: { url: string; onEnded: () => void }) {
 
   if (youtubeId) {
     return (
-      <div className="aspect-video rounded-lg overflow-hidden bg-black">
+      <div className="aspect-video rounded-lg overflow-hidden bg-black relative">
         <iframe
-          src={`https://www.youtube.com/embed/${youtubeId}?rel=0`}
+          src={`https://www.youtube-nocookie.com/embed/${youtubeId}?rel=0&modestbranding=1&iv_load_policy=3`}
           className="w-full h-full"
           allowFullScreen
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           title="Video lesson"
         />
+        {/* Block YouTube title bar link (top-left) */}
+        <div className="absolute top-0 left-0 w-4/5 h-12" style={{ zIndex: 1 }} />
+        {/* Block "Watch on YouTube" button (bottom-left) */}
+        <div className="absolute bottom-0 left-0 w-48 h-10" style={{ zIndex: 1 }} />
       </div>
     );
   }
@@ -118,6 +124,68 @@ function LinkContent({ url, onOpen }: { url: string; onOpen: () => void }) {
       </a>
       <p className="text-xs text-gray-400 mt-3">Opens in a new tab</p>
     </div>
+  );
+}
+
+function RichContent({ html }: { html: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = ref.current;
+    if (!container) return;
+
+    container.querySelectorAll<HTMLIFrameElement>('iframe').forEach(iframe => {
+      const src = iframe.getAttribute('src') || '';
+      if (!/youtube(?:-nocookie)?\.com\/embed\//.test(src)) return;
+      // Skip if already processed
+      if (iframe.closest('[data-yt-wrap]')) return;
+
+      // Extract video ID and build a clean nocookie URL
+      const idMatch = src.match(/embed\/([A-Za-z0-9_-]{11})/);
+      if (!idMatch) return;
+      iframe.setAttribute(
+        'src',
+        `https://www.youtube-nocookie.com/embed/${idMatch[1]}?rel=0&modestbranding=1&iv_load_policy=3`
+      );
+
+      // Wrap in responsive 16:9 container (padding-bottom hack works in all browsers)
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('data-yt-wrap', '1');
+      wrapper.style.cssText =
+        'position:relative;width:100%;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;background:#000;margin:8px 0;';
+      iframe.parentNode!.insertBefore(wrapper, iframe);
+      wrapper.appendChild(iframe);
+      iframe.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;border:none;';
+
+      // Transparent overlay — title bar (top of iframe)
+      const topDiv = document.createElement('div');
+      topDiv.style.cssText =
+        'position:absolute;top:0;left:0;width:80%;height:48px;z-index:2;';
+      wrapper.appendChild(topDiv);
+
+      // Transparent overlay — "Watch on YouTube" button (bottom-left)
+      const botDiv = document.createElement('div');
+      botDiv.style.cssText =
+        'position:absolute;bottom:0;left:0;width:200px;height:42px;z-index:2;';
+      wrapper.appendChild(botDiv);
+    });
+
+    // Strip YouTube anchor hrefs so plain text links don't navigate out
+    container.querySelectorAll<HTMLAnchorElement>('a').forEach(a => {
+      if (/youtube\.com|youtu\.be/.test(a.getAttribute('href') || '')) {
+        a.removeAttribute('href');
+        a.style.cssText = 'cursor:default;color:inherit;text-decoration:none;pointer-events:none;';
+      }
+    });
+  }, [html]);
+
+  return (
+    <div
+      ref={ref}
+      className="prose prose-sm max-w-none text-gray-700"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
 
@@ -360,10 +428,7 @@ export default function LessonDetailPage() {
       {lesson.content_body && (
         <div className="mb-8">
           <h2 className="text-base font-semibold text-gray-900 mb-3">Description</h2>
-          <div
-            className="prose prose-sm max-w-none text-gray-700"
-            dangerouslySetInnerHTML={{ __html: lesson.content_body }}
-          />
+          <RichContent html={lesson.content_body} />
         </div>
       )}
 
