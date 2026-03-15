@@ -207,9 +207,9 @@ function SortableModuleCard({
   );
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div ref={setNodeRef} style={style} className="bg-white rounded-xl border border-gray-200 shadow-sm">
       {/* Module header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100 rounded-t-xl">
         <button type="button" {...attributes} {...listeners} className="shrink-0 p-1">
           <DragHandle />
         </button>
