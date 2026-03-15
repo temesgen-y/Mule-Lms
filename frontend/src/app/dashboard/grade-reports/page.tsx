@@ -104,16 +104,19 @@ export default function GradeReportsPage() {
       setCourses(mapped);
 
       // ── Academic year list (unique, sorted desc) ──────────────────────────
-      const years = [...new Set(mapped.map(r => r.academicYear).filter(y => y !== '—'))].sort().reverse();
+      // Include '—' as a fallback so courses still show even if year label is missing
+      const years = [...new Set(mapped.map(r => r.academicYear))].sort().reverse();
       setAcademicYears(years);
-      setSelectedYear(years[0] ?? '');
+      setSelectedYear(years[0] ?? 'all');
       setLoading(false);
     })();
   }, []);
 
   // ── Derived data ─────────────────────────────────────────────────────────
 
-  const yearCourses = courses.filter(c => c.academicYear === selectedYear);
+  const yearCourses = selectedYear === 'all'
+    ? courses
+    : courses.filter(c => c.academicYear === selectedYear);
 
   const graded  = yearCourses.filter(c => c.finalGrade != null);
   const pending = yearCourses.filter(c => c.finalGrade == null);
@@ -167,14 +170,14 @@ export default function GradeReportsPage() {
                 className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#4c1d95]/20 focus:border-[#4c1d95]"
               >
                 {academicYears.map(y => (
-                  <option key={y} value={y}>{y}</option>
+                  <option key={y} value={y}>{y === '—' ? 'All courses' : y}</option>
                 ))}
               </select>
             </div>
           )}
           {academicYears.length === 1 && (
             <div className="text-sm text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
-              Academic Year: <span className="font-semibold text-gray-800">{selectedYear}</span>
+              Academic Year: <span className="font-semibold text-gray-800">{selectedYear === '—' ? 'All courses' : selectedYear}</span>
             </div>
           )}
         </div>
