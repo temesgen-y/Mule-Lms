@@ -884,18 +884,6 @@ export default function AssessmentTakingPage() {
                     <p className="text-4xl font-bold text-[#4c1d95]">{result.scorePct?.toFixed(1)}%</p>
                     <p className="text-xs text-gray-400 mt-1">Percentage</p>
                   </div>
-                  {letterGrade && (
-                    <div className="text-center">
-                      <span className={`inline-block px-4 py-1.5 rounded-xl text-xl font-bold ${gradeBadge}`}>{letterGrade}</span>
-                      <p className="text-xs text-gray-400 mt-1">Letter Grade</p>
-                    </div>
-                  )}
-                  <div className="text-center">
-                    <p className={`text-2xl font-bold ${result.passed ? 'text-green-600' : 'text-red-500'}`}>
-                      {result.passed ? '✓ Passed' : '✗ Failed'}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">Result</p>
-                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-4">
