@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useInstructorCourse, type OfferingDetails } from '@/contexts/InstructorCourseContext';
 import { getNextItemOrder } from '@/utils/sortOrderHelpers';
@@ -67,7 +67,10 @@ export default function AddLessonModal({
 
   const [title, setTitle] = useState('');
   const [lessonType, setLessonType] = useState<string>('video');
+  const [contentMethod, setContentMethod] = useState<'url' | 'upload'>('url');
   const [contentUrl, setContentUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [contentBody, setContentBody] = useState('');
   const [duration, setDuration] = useState('');
   const [isVisible, setIsVisible] = useState(true);
@@ -125,7 +128,12 @@ export default function AddLessonModal({
     if (!selectedOfferingId) { setError('Please select a course.'); return; }
     if (!lockedModuleId && !selectedModuleId) { setError('Please select a module.'); return; }
     if (!title.trim()) { setError('Title is required.'); return; }
-    if (!contentUrl.trim()) { setError(`${URL_LABELS[lessonType] ?? 'Content URL'} is required.`); return; }
+    // Content validation based on type + method
+    const needsUpload = (lessonType === 'video' || lessonType === 'document') && contentMethod === 'upload';
+    const needsUrl = lessonType === 'link' || ((lessonType === 'video' || lessonType === 'document') && contentMethod === 'url');
+    if (needsUpload && !selectedFile) { setError('Please select a file to upload.'); return; }
+    if (needsUrl && !contentUrl.trim()) { setError(`${URL_LABELS[lessonType] ?? 'Content URL'} is required.`); return; }
+    if (lessonType === 'scorm' && !selectedFile && !contentUrl.trim()) { setError('SCORM package is required.'); return; }
     const durationNum = duration ? Number(duration) : null;
     if (durationNum !== null && (isNaN(durationNum) || durationNum < 1)) {
       setError('Duration must be a positive number.'); return;
@@ -136,15 +144,16 @@ export default function AddLessonModal({
     setSubmitting(true);
     try {
       const supabase = createClient();
+      const useUpload = selectedFile !== null && (contentMethod === 'upload' || lessonType === 'scorm');
 
-      // Step 1: insert lesson
+      // Step 1: insert lesson (content_url null if uploading — filled in step 2)
       const { data: lesson, error: lessonErr } = await supabase
         .from('lessons')
         .insert({
           offering_id: selectedOfferingId,
           title: title.trim(),
           type: lessonType,
-          content_url: contentUrl.trim() || null,
+          content_url: useUpload ? null : (contentUrl.trim() || null),
           content_body: contentBody || null,
           duration_mins: durationNum,
           is_visible: isVisible,
@@ -154,7 +163,21 @@ export default function AddLessonModal({
 
       if (lessonErr) throw lessonErr;
 
-      // Step 2: get next sort_order in module
+      // Step 2 (optional): upload file, then update lesson content_url
+      if (useUpload && selectedFile) {
+        const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `lessons/${lesson.id}/${Date.now()}_${safeName}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('lms-uploads')
+          .upload(path, selectedFile, { upsert: false });
+        if (uploadErr) throw uploadErr;
+        const { data: urlData } = supabase.storage.from('lms-uploads').getPublicUrl(path);
+        const { error: updateErr } = await supabase.from('lessons').update({ content_url: urlData.publicUrl }).eq('id', lesson.id);
+        if (updateErr) throw updateErr;
+        lesson.content_url = urlData.publicUrl;
+      }
+
+      // Step 3: get next sort_order in module
       const nextOrder = await getNextItemOrder(moduleId);
 
       // Step 3: link lesson to module
@@ -309,10 +332,13 @@ export default function AddLessonModal({
                   id="al-type"
                   value={lessonType}
                   onChange={(e) => {
-                    setLessonType(e.target.value);
-                    if (e.target.value === 'document' || e.target.value === 'link') {
-                      setDuration('');
-                    }
+                    const t = e.target.value;
+                    setLessonType(t);
+                    if (t === 'document' || t === 'link') setDuration('');
+                    if (t === 'link') setContentMethod('url');
+                    else if (t === 'scorm') setContentMethod('upload');
+                    setSelectedFile(null);
+                    setContentUrl('');
                   }}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                 >
@@ -339,19 +365,130 @@ export default function AddLessonModal({
               )}
             </div>
 
-            {/* Content URL — dynamic label */}
+            {/* Content — upload or URL depending on type */}
             <div>
-              <label htmlFor="al-url" className="block text-sm font-medium text-gray-700 mb-1">
-                {URL_LABELS[lessonType] ?? 'Content URL'} <span className="text-red-500">*</span>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {lessonType === 'video' ? 'Video Content' :
+                 lessonType === 'document' ? 'Document Content' :
+                 lessonType === 'link' ? 'External Link URL' :
+                 'SCORM Package'}{' '}
+                <span className="text-red-500">*</span>
               </label>
-              <input
-                id="al-url"
-                type="url"
-                value={contentUrl}
-                onChange={(e) => setContentUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+
+              {/* Video / Document: upload OR url choice */}
+              {(lessonType === 'video' || lessonType === 'document') && (
+                <>
+                  <div className="flex gap-5 mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" value="url" checked={contentMethod === 'url'}
+                        onChange={() => { setContentMethod('url'); setSelectedFile(null); }}
+                        className="text-purple-600" />
+                      <span className="text-sm text-gray-700">Paste URL</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" value="upload" checked={contentMethod === 'upload'}
+                        onChange={() => { setContentMethod('upload'); setContentUrl(''); }}
+                        className="text-purple-600" />
+                      <span className="text-sm text-gray-700">Upload file</span>
+                    </label>
+                  </div>
+
+                  {contentMethod === 'url' && (
+                    <input
+                      type="url"
+                      value={contentUrl}
+                      onChange={(e) => setContentUrl(e.target.value)}
+                      placeholder={lessonType === 'video' ? 'https://youtube.com/... or direct video URL' : 'https://... PDF URL'}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  )}
+
+                  {contentMethod === 'upload' && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept={lessonType === 'video' ? 'video/*' : 'application/pdf'}
+                        onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                      />
+                      <div
+                        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                          selectedFile ? 'border-purple-300 bg-purple-50' : 'border-gray-300 hover:border-purple-400'
+                        }`}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {selectedFile ? (
+                          <div className="flex items-center justify-center gap-3">
+                            <span className="text-2xl">{lessonType === 'video' ? '📹' : '📄'}</span>
+                            <span className="text-sm font-medium text-gray-700 truncate max-w-xs">{selectedFile.name}</span>
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
+                              className="text-red-400 hover:text-red-600 text-xs ml-1">✕</button>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-gray-500 text-sm">
+                              {lessonType === 'video' ? '📹 Click to upload video file' : '📄 Click to upload PDF'}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {lessonType === 'video' ? 'Max 100MB · MP4, WebM, MOV' : 'Max 20MB · PDF'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Link: URL only */}
+              {lessonType === 'link' && (
+                <>
+                  <input
+                    type="url"
+                    value={contentUrl}
+                    onChange={(e) => setContentUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">ℹ️ Opens in a new browser tab for students.</p>
+                </>
+              )}
+
+              {/* SCORM: upload only */}
+              {lessonType === 'scorm' && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".zip"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                  />
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                      selectedFile ? 'border-purple-300 bg-purple-50' : 'border-gray-300 hover:border-purple-400'
+                    }`}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {selectedFile ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <span className="text-2xl">📦</span>
+                        <span className="text-sm font-medium text-gray-700">{selectedFile.name}</span>
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
+                          className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-gray-500 text-sm">📦 Click to upload SCORM .zip package</p>
+                        <p className="text-xs text-gray-400 mt-1">Max 100MB · .zip only</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Description — TipTap */}

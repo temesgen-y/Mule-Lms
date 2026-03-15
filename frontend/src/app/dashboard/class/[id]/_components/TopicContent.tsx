@@ -312,62 +312,30 @@ function LiveSessionItem({ item }: { item: ModuleItem }) {
 
 // ─── LessonItem ───────────────────────────────────────────────────────────────
 
-function LessonItem({ item }: { item: ModuleItem }) {
-  const [open, setOpen] = useState(false);
+function LessonItem({ item, offeringId }: { item: ModuleItem; offeringId: string }) {
+  const router = useRouter();
   const detail = item.detail as LessonDetail;
   const prog = item.progress?.type === 'lesson' ? item.progress.status : 'not_started';
   const progColors = { not_started: 'bg-gray-100 text-gray-500', in_progress: 'bg-amber-100 text-amber-700', completed: 'bg-green-100 text-green-700' };
   const progLabels = { not_started: 'Not Started', in_progress: 'In Progress', completed: '✓ Completed' };
-  const hasBody = !!detail.content_body;
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden mb-3">
-      {/* Header row */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-white">
-        {hasBody ? (
-          <button
-            type="button"
-            onClick={() => setOpen(v => !v)}
-            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:bg-gray-100 transition-colors"
-            aria-label={open ? 'Collapse' : 'Expand'}
-          >
-            <span className={`text-sm transition-transform inline-block ${open ? 'rotate-90' : ''}`}>›</span>
-          </button>
-        ) : (
-          <div className="w-7 flex-shrink-0" />
-        )}
-        <span className="text-lg flex-shrink-0">{LESSON_ICONS[detail.type] ?? '📄'}</span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm">{detail.title}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${progColors[prog]}`}>
-              {progLabels[prog]}
-            </span>
-            {detail.duration_mins && <span className="text-xs text-gray-400">{detail.duration_mins} min</span>}
-            {item.is_mandatory && <span className="text-[10px] font-semibold text-red-600">Required</span>}
-          </div>
+    <div
+      className="border border-gray-200 rounded-lg px-4 py-3 bg-white flex items-center gap-3 hover:bg-purple-50 hover:border-purple-200 cursor-pointer transition-colors group"
+      onClick={() => router.push(`/dashboard/class/${offeringId}/lessons/${item.lesson_id}`)}
+    >
+      <span className="text-xl flex-shrink-0">{LESSON_ICONS[detail.type] ?? '📄'}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900 group-hover:text-purple-700">{detail.title}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${progColors[prog]}`}>
+            {progLabels[prog]}
+          </span>
+          {detail.duration_mins && <span className="text-xs text-gray-400">{detail.duration_mins} min</span>}
+          {item.is_mandatory && <span className="text-[10px] font-semibold text-red-600">Required</span>}
         </div>
-        {detail.content_url && (
-          <a
-            href={detail.content_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-shrink-0 px-3 py-1.5 rounded bg-[#4c1d95] text-white text-xs font-semibold hover:bg-[#5b21b6] transition-colors"
-          >
-            Open →
-          </a>
-        )}
       </div>
-
-      {/* Expanded rich-text description */}
-      {open && hasBody && (
-        <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
-          <div
-            className="prose prose-sm max-w-none text-gray-700"
-            dangerouslySetInnerHTML={{ __html: detail.content_body! }}
-          />
-        </div>
-      )}
+      <span className="text-sm font-medium text-purple-600 group-hover:underline flex-shrink-0">Open →</span>
     </div>
   );
 }
@@ -597,7 +565,7 @@ export default function TopicContent({ topicIndex }: { topicIndex: number }) {
                     );
                   }
                   if (item.item_type === 'lesson' && item.detail?.kind === 'lesson') {
-                    return <LessonItem key={item.id} item={item} />;
+                    return <LessonItem key={item.id} item={item} offeringId={offeringId} />;
                   }
                   return null;
                 })}
