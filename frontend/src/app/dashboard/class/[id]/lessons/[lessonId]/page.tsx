@@ -23,10 +23,19 @@ type NavItem = { lessonId: string; title: string };
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractYoutubeId(url: string): string | null {
-  const m = url.match(
-    /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
-  );
-  return m?.[1] ?? null;
+  // Try each pattern independently — most permissive first
+  const patterns = [
+    /[?&]v=([A-Za-z0-9_-]{11})/,         // ?v=ID or &v=ID  (all watch URLs)
+    /youtu\.be\/([A-Za-z0-9_-]{11})/,     // youtu.be/ID
+    /\/embed\/([A-Za-z0-9_-]{11})/,       // /embed/ID
+    /\/shorts\/([A-Za-z0-9_-]{11})/,      // /shorts/ID
+    /\/v\/([A-Za-z0-9_-]{11})/,           // /v/ID  (old format)
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 function extractVimeoId(url: string): string | null {
