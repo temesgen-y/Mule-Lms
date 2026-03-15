@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -46,6 +46,7 @@ type Attempt = {
   submittedAt: string | null;
   score: number | null;
   scorePct: number | null;
+  textResponse: string | null;
   answers: AnswerRow[];
   // grading state
   scoreInput: string;
@@ -80,8 +81,9 @@ const fmtDate = (iso: string | null) =>
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AssessmentSubmissionsPage() {
-  const params       = useParams();
-  const assessmentId = params?.assessmentId as string;
+  const params        = useParams();
+  const searchParams  = useSearchParams();
+  const assessmentId  = params?.assessmentId as string;
 
   const [info, setInfo]           = useState<AssessmentInfo | null>(null);
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
@@ -89,9 +91,8 @@ export default function AssessmentSubmissionsPage() {
   const [notSubmitted, setNotSubmitted] = useState<NotSubmittedStudent[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
-  const [expanded, setExpanded]   = useState<Set<string>>(new Set());
-  const [tab, setTab]             = useState<Tab>('pending');
-  const [search, setSearch]       = useState('');
+  const [tab, setTab]             = useState<Tab>((searchParams?.get('tab') as Tab) ?? 'pending');
+  const [search, setSearch]       = useState(searchParams?.get('search') ?? '');
 
   const load = useCallback(async () => {
     if (!assessmentId) return;
@@ -135,34 +136,14 @@ export default function AssessmentSubmissionsPage() {
         offeringId: a.offering_id, courseLabel,
       });
 
-      // ── Questions ────────────────────────────────────────────────────────
-      const { data: qsData } = await supabase
+      // ── Questions (primary fetch by assessment_id) ────────────────────────
+      let { data: qsData } = await supabase
         .from('questions')
         .select('id, body, type, marks, sort_order')
         .eq('assessment_id', assessmentId)
         .order('sort_order');
 
-      const qIds = ((qsData ?? []) as any[]).map((q: any) => q.id);
-
-      // Fetch options separately to avoid nested-select issues
-      let optsByQuestion: Record<string, QuestionOption[]> = {};
-      if (qIds.length > 0) {
-        const { data: optsData } = await supabase
-          .from('question_options')
-          .select('id, question_id, body, is_correct, sort_order')
-          .in('question_id', qIds)
-          .order('sort_order');
-        ((optsData ?? []) as any[]).forEach((o: any) => {
-          if (!optsByQuestion[o.question_id]) optsByQuestion[o.question_id] = [];
-          optsByQuestion[o.question_id].push({ id: o.id, body: o.body, is_correct: o.is_correct, sort_order: o.sort_order });
-        });
-      }
-
-      const mappedQs: QuestionRow[] = ((qsData ?? []) as any[]).map((q: any) => ({
-        id: q.id, body: q.body, type: q.type, marks: q.marks, sort_order: q.sort_order,
-        options: (optsByQuestion[q.id] ?? []).sort((x, y) => x.sort_order - y.sort_order),
-      }));
-      setQuestions(mappedQs);
+      // questions are loaded after student answers below so we defer building mappedQs
 
       // ── Enrolled students ────────────────────────────────────────────────
       const { data: enrollData } = await supabase
@@ -196,7 +177,7 @@ export default function AssessmentSubmissionsPage() {
       // ── Attempts (ALL non-in_progress) ───────────────────────────────────
       const { data: attData, error: attErr } = await supabase
         .from('assessment_attempts')
-        .select('id, student_id, enrollment_id, attempt_number, status, submitted_at, score, score_pct')
+        .select('id, student_id, enrollment_id, attempt_number, status, submitted_at, score, score_pct, text_response')
         .eq('assessment_id', assessmentId)
         .not('status', 'eq', 'in_progress')
         .order('submitted_at', { ascending: false });
@@ -209,12 +190,14 @@ export default function AssessmentSubmissionsPage() {
 
       // ── Student answers ──────────────────────────────────────────────────
       let saByAttempt: Record<string, AnswerRow[]> = {};
+      let allSaRows: any[] = [];
       if (attemptIds.length > 0) {
         const { data: saData } = await supabase
           .from('student_answers')
           .select('attempt_id, question_id, text_answer, selected_options, is_correct, marks_awarded')
           .in('attempt_id', attemptIds);
-        ((saData ?? []) as any[]).forEach((sa: any) => {
+        allSaRows = (saData ?? []) as any[];
+        allSaRows.forEach((sa: any) => {
           if (!saByAttempt[sa.attempt_id]) saByAttempt[sa.attempt_id] = [];
           saByAttempt[sa.attempt_id].push({
             questionId:      sa.question_id,
@@ -225,6 +208,40 @@ export default function AssessmentSubmissionsPage() {
           });
         });
       }
+
+      // ── Fallback: if primary questions fetch empty, fetch by IDs from answers
+      if ((!qsData || qsData.length === 0) && allSaRows.length > 0) {
+        const answerQIds = [...new Set(allSaRows.map((sa: any) => sa.question_id).filter(Boolean))];
+        if (answerQIds.length > 0) {
+          const { data: fallbackQs } = await supabase
+            .from('questions')
+            .select('id, body, type, marks, sort_order')
+            .in('id', answerQIds)
+            .order('sort_order');
+          if (fallbackQs && fallbackQs.length > 0) qsData = fallbackQs;
+        }
+      }
+
+      // ── Build questions + options ────────────────────────────────────────
+      const qIds = ((qsData ?? []) as any[]).map((q: any) => q.id);
+      let optsByQuestion: Record<string, QuestionOption[]> = {};
+      if (qIds.length > 0) {
+        const { data: optsData } = await supabase
+          .from('question_options')
+          .select('id, question_id, body, is_correct, sort_order')
+          .in('question_id', qIds)
+          .order('sort_order');
+        ((optsData ?? []) as any[]).forEach((o: any) => {
+          if (!optsByQuestion[o.question_id]) optsByQuestion[o.question_id] = [];
+          optsByQuestion[o.question_id].push({ id: o.id, body: o.body, is_correct: o.is_correct, sort_order: o.sort_order });
+        });
+      }
+
+      const mappedQs: QuestionRow[] = ((qsData ?? []) as any[]).map((q: any) => ({
+        id: q.id, body: q.body, type: q.type, marks: q.marks, sort_order: q.sort_order,
+        options: (optsByQuestion[q.id] ?? []).sort((x, y) => x.sort_order - y.sort_order),
+      }));
+      setQuestions(mappedQs);
 
       // ── Build Attempt objects ────────────────────────────────────────────
       const mapped: Attempt[] = attRows.map((att: any) => {
@@ -250,6 +267,7 @@ export default function AssessmentSubmissionsPage() {
           submittedAt:   att.submitted_at ?? null,
           score:         att.score ?? null,
           scorePct:      att.score_pct ?? null,
+          textResponse:  att.text_response ?? null,
           answers,
           scoreInput:    att.score != null ? String(att.score) : autoScore > 0 ? String(autoScore) : '',
           questionMarks,
@@ -257,8 +275,6 @@ export default function AssessmentSubmissionsPage() {
         };
       });
       setAttempts(mapped);
-      // Auto-expand all pending attempts so answers are immediately visible
-      setExpanded(new Set(mapped.filter(a => a.status !== 'graded').map(a => a.id)));
 
       // ── Not-submitted students ────────────────────────────────────────────
       const notSub: NotSubmittedStudent[] = studentIds
@@ -360,13 +376,6 @@ export default function AssessmentSubmissionsPage() {
       a.id === att.id ? { ...a, status: 'graded', score: raw, scorePct, saving: false } : a
     ));
   };
-
-  const toggleExpand = (id: string) =>
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
 
   // ── Derived lists ─────────────────────────────────────────────────────────
 
@@ -494,8 +503,6 @@ export default function AssessmentSubmissionsPage() {
                 att={att}
                 questions={questions}
                 info={info!}
-                isExpanded={expanded.has(att.id)}
-                onToggle={() => toggleExpand(att.id)}
                 onUpdateScore={updateScore}
                 onUpdateQuestionMark={updateQuestionMark}
                 onSaveGrade={saveGrade}
@@ -580,14 +587,12 @@ function NotSubmittedList({ students }: { students: NotSubmittedStudent[] }) {
 // ─── Single Attempt Card ───────────────────────────────────────────────────
 
 function AttemptCard({
-  att, questions, info, isExpanded, onToggle,
+  att, questions, info,
   onUpdateScore, onUpdateQuestionMark, onSaveGrade,
 }: {
   att: Attempt;
   questions: QuestionRow[];
   info: AssessmentInfo;
-  isExpanded: boolean;
-  onToggle: () => void;
   onUpdateScore: (id: string, v: string) => void;
   onUpdateQuestionMark: (attemptId: string, qId: string, v: string, maxMark: number) => void;
   onSaveGrade: (att: Attempt) => void;
@@ -608,14 +613,11 @@ function AttemptCard({
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
 
-      {/* ── Row header ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-4">
-        {/* Avatar */}
+      {/* ── Student header ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 px-5 py-4 bg-gray-50 border-b border-gray-200">
         <div className="w-9 h-9 rounded-full bg-[#4c1d95] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
           {att.studentName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
         </div>
-
-        {/* Name + meta */}
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 text-sm">{att.studentName}</p>
           <p className="text-xs text-gray-400">
@@ -623,21 +625,159 @@ function AttemptCard({
             Attempt #{att.attemptNumber} · Submitted {fmtDate(att.submittedAt)}
           </p>
         </div>
-
-        {/* Status badge */}
-        <span className={`hidden sm:inline-flex text-[11px] font-semibold px-2.5 py-1 rounded-full border flex-shrink-0 ${statusStyles[att.status] ?? 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border flex-shrink-0 ${statusStyles[att.status] ?? 'bg-gray-100 text-gray-500 border-gray-200'}`}>
           {statusLabels[att.status] ?? att.status}
         </span>
-
-        {/* Current grade */}
         {att.score != null && (
-          <span className="text-sm font-bold text-gray-600 flex-shrink-0 hidden sm:block">
+          <span className="text-sm font-bold text-gray-600 flex-shrink-0">
             {att.score}/{info.total_marks}
           </span>
         )}
+      </div>
 
-        {/* Score input + grade button */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+      {/* ── Open-ended text response (no structured questions) ────────────── */}
+      {questions.length === 0 && (
+        <div className="px-5 py-4 bg-white">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Student Response</p>
+          {att.textResponse ? (
+            <div
+              className="prose prose-sm max-w-none bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-gray-700 text-sm"
+              dangerouslySetInnerHTML={{ __html: att.textResponse }}
+            />
+          ) : (
+            <p className="text-sm text-gray-400 italic bg-white border border-dashed border-gray-200 rounded-lg px-3 py-2">
+              No response submitted.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── Per-question answers (always visible) ─────────────────────────── */}
+      {questions.length > 0 && (
+        <div className="divide-y divide-gray-100">
+          {questions.map((q, qi) => {
+            const answer = att.answers.find(a => a.questionId === q.id);
+            const isMCQ       = q.type === 'mcq' || q.type === 'true_false';
+            const isOpenEnded = q.type === 'essay' || q.type === 'short_answer' || q.type === 'fill_blank';
+
+            return (
+              <div key={q.id} className="px-5 py-4 bg-white">
+                {/* Question */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                    <span className="mt-0.5 w-6 h-6 rounded-full bg-[#4c1d95]/10 text-[#4c1d95] text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                      {qi + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-2">
+                        {q.type.replace(/_/g, ' ')}
+                      </span>
+                      <span
+                        className="text-sm text-gray-800 font-medium prose prose-sm inline"
+                        dangerouslySetInnerHTML={{ __html: q.body }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0 mt-0.5">{q.marks} mark{q.marks !== 1 ? 's' : ''}</span>
+                </div>
+
+                {/* MCQ options */}
+                {isMCQ && (
+                  <div className="ml-8 space-y-2">
+                    {q.options.length === 0 && (
+                      <p className="text-xs text-gray-400 italic">No options recorded.</p>
+                    )}
+                    {q.options.map(opt => {
+                      const isSelected = answer?.selectedOptions?.includes(opt.id) ?? false;
+                      const isCorrect  = opt.is_correct;
+
+                      let optStyle = 'bg-white border-gray-200 text-gray-700';
+                      if (isSelected && isCorrect)        optStyle = 'bg-green-50 border-green-400 text-green-800';
+                      else if (isSelected && !isCorrect)  optStyle = 'bg-red-50 border-red-400 text-red-800';
+                      else if (!isSelected && isCorrect)  optStyle = 'bg-green-50/60 border-green-200 text-green-700';
+
+                      return (
+                        <div key={opt.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm ${optStyle}`}>
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                            isSelected
+                              ? (isCorrect ? 'border-green-500 bg-green-500' : 'border-red-500 bg-red-500')
+                              : 'border-gray-300 bg-white'
+                          }`}>
+                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                          <span className="flex-1" dangerouslySetInnerHTML={{ __html: opt.body }} />
+                          {isSelected && (
+                            <span className={`text-[11px] font-semibold flex-shrink-0 ${isCorrect ? 'text-green-700' : 'text-red-600'}`}>
+                              {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                            </span>
+                          )}
+                          {!isSelected && isCorrect && (
+                            <span className="text-[11px] font-semibold text-green-600 flex-shrink-0">Correct answer</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-gray-400 mt-1">
+                      Auto-graded: <span className="font-semibold">{answer?.marksAwarded ?? 0}/{q.marks}</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Open-ended */}
+                {isOpenEnded && (
+                  <div className="ml-8 space-y-2">
+                    {answer?.textAnswer ? (
+                      <div
+                        className="prose prose-sm max-w-none bg-gray-50 border border-gray-200 rounded-lg p-3.5 text-gray-700 text-sm"
+                        dangerouslySetInnerHTML={{ __html: answer.textAnswer }}
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-400 italic bg-white border border-dashed border-gray-200 rounded-lg px-3 py-2">
+                        No answer provided.
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      <label className="text-xs text-gray-500 font-medium">Award marks:</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={q.marks}
+                        step={0.5}
+                        value={att.questionMarks[q.id] ?? ''}
+                        onChange={e => onUpdateQuestionMark(att.id, q.id, e.target.value, q.marks)}
+                        placeholder="0"
+                        className={`w-20 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4c1d95]/20 focus:border-[#4c1d95] ${
+                          parseFloat(att.questionMarks[q.id] ?? '0') > q.marks
+                            ? 'border-red-400 bg-red-50'
+                            : 'border-gray-300'
+                        }`}
+                      />
+                      <span className="text-xs font-medium text-gray-500">/ {q.marks} max</span>
+                      {parseFloat(att.questionMarks[q.id] ?? '0') > q.marks && (
+                        <span className="text-xs text-red-600 font-semibold">Exceeds max!</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!answer && (
+                  <p className="ml-8 text-sm text-gray-400 italic">No answer recorded.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Grade footer ──────────────────────────────────────────────────── */}
+      <div className="px-5 py-4 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="text-sm text-gray-600">
+          <span className="font-medium">Total score to award:</span>
+          <span className="ml-2 text-gray-400 text-xs">
+            (MCQ auto-graded · Enter marks for open-ended questions above)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
           <div className="relative">
             <input
               type="number"
@@ -647,11 +787,11 @@ function AttemptCard({
               value={att.scoreInput}
               onChange={e => onUpdateScore(att.id, e.target.value)}
               placeholder="Score"
-              className={`w-[72px] pl-2 pr-7 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4c1d95]/20 focus:border-[#4c1d95] ${
-                parseFloat(att.scoreInput) > info.total_marks ? 'border-red-400 bg-red-50' : 'border-gray-200'
+              className={`w-28 pl-3 pr-10 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4c1d95]/20 focus:border-[#4c1d95] ${
+                parseFloat(att.scoreInput) > info.total_marks ? 'border-red-400 bg-red-50' : 'border-gray-300'
               }`}
             />
-            <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
               /{info.total_marks}
             </span>
           </div>
@@ -659,188 +799,12 @@ function AttemptCard({
             type="button"
             onClick={() => onSaveGrade(att)}
             disabled={att.saving || !att.scoreInput}
-            className="px-3 py-1.5 rounded-lg bg-[#4c1d95] text-white text-xs font-semibold hover:bg-[#3b1677] disabled:opacity-50 min-w-[58px] transition-colors"
+            className="px-4 py-2 rounded-lg bg-[#4c1d95] text-white text-sm font-semibold hover:bg-[#3b1677] disabled:opacity-50 transition-colors"
           >
-            {att.saving ? '…' : needsGrade ? 'Grade' : 'Update'}
+            {att.saving ? 'Saving…' : needsGrade ? 'Save Grade' : 'Update Grade'}
           </button>
         </div>
-
-        {/* Expand toggle */}
-        <button
-          type="button"
-          onClick={onToggle}
-          title={isExpanded ? 'Collapse' : 'View answers'}
-          className="text-gray-400 hover:text-gray-700 flex-shrink-0 ml-1 p-1 rounded-md hover:bg-gray-100"
-        >
-          <svg className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
       </div>
-
-      {/* ── Expanded: per-question answers ───────────────────────────────── */}
-      {isExpanded && (
-        <div className="border-t border-gray-100">
-
-          {/* Per-question answers */}
-          {questions.length > 0 && (
-            <div className="divide-y divide-gray-50">
-              {questions.map((q, qi) => {
-                const answer = att.answers.find(a => a.questionId === q.id);
-                const isMCQ       = q.type === 'mcq' || q.type === 'true_false';
-                const isOpenEnded = q.type === 'essay' || q.type === 'short_answer' || q.type === 'fill_blank';
-
-                return (
-                  <div key={q.id} className="px-5 py-4 bg-gray-50/40">
-                    {/* Question label */}
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                        <span className="mt-0.5 w-6 h-6 rounded-full bg-[#4c1d95]/10 text-[#4c1d95] text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-                          {qi + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mr-2">
-                            {q.type.replace(/_/g, ' ')}
-                          </span>
-                          <span
-                            className="text-sm text-gray-800 font-medium prose prose-sm inline"
-                            dangerouslySetInnerHTML={{ __html: q.body }}
-                          />
-                        </div>
-                      </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0 mt-0.5">{q.marks} mark{q.marks !== 1 ? 's' : ''}</span>
-                    </div>
-
-                    {/* MCQ options */}
-                    {isMCQ && (
-                      <div className="ml-8 space-y-2">
-                        {q.options.length === 0 && (
-                          <p className="text-xs text-gray-400 italic">No options recorded.</p>
-                        )}
-                        {q.options.map(opt => {
-                          const isSelected = answer?.selectedOptions?.includes(opt.id) ?? false;
-                          const isCorrect  = opt.is_correct;
-
-                          let optStyle = 'bg-white border-gray-200 text-gray-700';
-                          if (isSelected && isCorrect)   optStyle = 'bg-green-50 border-green-400 text-green-800';
-                          else if (isSelected && !isCorrect) optStyle = 'bg-red-50 border-red-400 text-red-800';
-                          else if (!isSelected && isCorrect) optStyle = 'bg-green-50/60 border-green-200 text-green-700';
-
-                          return (
-                            <div key={opt.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm ${optStyle}`}>
-                              {/* Indicator */}
-                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                                isSelected
-                                  ? (isCorrect ? 'border-green-500 bg-green-500' : 'border-red-500 bg-red-500')
-                                  : 'border-gray-300 bg-white'
-                              }`}>
-                                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                              </div>
-
-                              <span className="flex-1" dangerouslySetInnerHTML={{ __html: opt.body }} />
-
-                              {isSelected && (
-                                <span className={`text-[11px] font-semibold flex-shrink-0 ${isCorrect ? 'text-green-700' : 'text-red-600'}`}>
-                                  {isCorrect ? '✓ Correct' : '✗ Incorrect'}
-                                </span>
-                              )}
-                              {!isSelected && isCorrect && (
-                                <span className="text-[11px] font-semibold text-green-600 flex-shrink-0">Correct answer</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        <p className="text-xs text-gray-400 mt-1 ml-0.5">
-                          Auto-graded: <span className="font-semibold">{answer?.marksAwarded ?? 0}/{q.marks}</span>
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Open-ended: show student text + marks input */}
-                    {isOpenEnded && (
-                      <div className="ml-8 space-y-2">
-                        {answer?.textAnswer ? (
-                          <div
-                            className="prose prose-sm max-w-none bg-white border border-gray-200 rounded-lg p-3.5 text-gray-700 text-sm"
-                            dangerouslySetInnerHTML={{ __html: answer.textAnswer }}
-                          />
-                        ) : (
-                          <p className="text-sm text-gray-400 italic bg-white border border-dashed border-gray-200 rounded-lg px-3 py-2">
-                            No answer provided.
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 pt-2">
-                          <label className="text-xs text-gray-500 font-medium">Award marks:</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={q.marks}
-                            step={0.5}
-                            value={att.questionMarks[q.id] ?? ''}
-                            onChange={e => onUpdateQuestionMark(att.id, q.id, e.target.value, q.marks)}
-                            placeholder="0"
-                            className={`w-20 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4c1d95]/20 focus:border-[#4c1d95] ${
-                              parseFloat(att.questionMarks[q.id] ?? '0') > q.marks
-                                ? 'border-red-400 bg-red-50'
-                                : 'border-gray-300'
-                            }`}
-                          />
-                          <span className="text-xs font-medium text-gray-500">/ {q.marks} max</span>
-                          {parseFloat(att.questionMarks[q.id] ?? '0') > q.marks && (
-                            <span className="text-xs text-red-600 font-semibold">Exceeds max!</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* No answer recorded */}
-                    {!answer && (
-                      <p className="ml-8 text-sm text-gray-400 italic">No answer recorded.</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ── Grade footer (inside expanded card) ───────────────────────── */}
-          <div className="px-5 py-4 border-t border-gray-200 bg-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium">Total score to award:</span>
-              <span className="ml-2 text-gray-400 text-xs">
-                (MCQ auto-graded · Enter marks for open-ended questions above)
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <input
-                  type="number"
-                  min={0}
-                  max={info.total_marks}
-                  step={0.5}
-                  value={att.scoreInput}
-                  onChange={e => onUpdateScore(att.id, e.target.value)}
-                  placeholder="Score"
-                  className={`w-28 pl-3 pr-10 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4c1d95]/20 focus:border-[#4c1d95] ${
-                    parseFloat(att.scoreInput) > info.total_marks ? 'border-red-400 bg-red-50' : 'border-gray-300'
-                  }`}
-                />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                  /{info.total_marks}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onSaveGrade(att)}
-                disabled={att.saving || !att.scoreInput}
-                className="px-4 py-2 rounded-lg bg-[#4c1d95] text-white text-sm font-semibold hover:bg-[#3b1677] disabled:opacity-50 transition-colors"
-              >
-                {att.saving ? 'Saving…' : needsGrade ? 'Save Grade' : 'Update Grade'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
