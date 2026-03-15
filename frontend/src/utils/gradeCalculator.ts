@@ -68,3 +68,29 @@ export const getGradeColor = (grade: string | null | undefined): string => {
     default  : return 'bg-gray-100 text-gray-600';
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getGpaPoints — converts a letter grade to a 4.0-scale GPA point value
+// ─────────────────────────────────────────────────────────────────────────────
+export const getGpaPoints = (grade: string): number => {
+  const scale: Record<string, number> = {
+    'A': 4.0, 'A-': 3.7,
+    'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+    'C+': 2.3, 'C': 2.0,
+    'D': 1.0, 'F': 0.0,
+  };
+  return scale[grade] ?? 0;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// calculateGpa — weighted GPA across courses using credit hours
+// ─────────────────────────────────────────────────────────────────────────────
+export const calculateGpa = (
+  grades: { letter: string; credits: number }[]
+): number => {
+  const completed = grades.filter(g => g.letter != null && g.letter !== '');
+  if (completed.length === 0) return 0;
+  const totalPoints  = completed.reduce((sum, g) => sum + getGpaPoints(g.letter) * g.credits, 0);
+  const totalCredits = completed.reduce((sum, g) => sum + g.credits, 0);
+  return totalCredits > 0 ? Math.round((totalPoints / totalCredits) * 100) / 100 : 0;
+};

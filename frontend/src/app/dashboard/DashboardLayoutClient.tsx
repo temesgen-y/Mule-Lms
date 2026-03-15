@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { href: '/dashboard',              label: 'Home',          icon: '🏠', exact: true  },
   { href: '/dashboard/courses',      label: 'My Courses',    icon: '📚', exact: false },
   { href: '/dashboard/assignments',  label: 'Assignments',   icon: '📝', exact: false },
+  { href: '/dashboard/assessments',  label: 'Assessments',   icon: '📋', exact: false },
   { href: '/dashboard/grades',       label: 'Grades',        icon: '📊', exact: false },
   { href: '/dashboard/attendance',   label: 'Attendance',    icon: '✅', exact: false },
   { href: '/dashboard/certificates', label: 'Certificates',  icon: '🏆', exact: false },
@@ -147,6 +148,7 @@ function InnerLayout({
   closeAll: () => void;
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const isClassView = !!pathname?.includes('/dashboard/class');
   const unreadMsgCount = useUnreadMessageCount(user.id);
   const unreadGroupCount = useUnreadGroups(studyGroupsEnabled ? user.id : null);
