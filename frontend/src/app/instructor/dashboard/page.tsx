@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import DashboardSearch from './DashboardSearch';
 
 const COURSE_COLORS = [
   'bg-[#1e3a5f]',
@@ -287,6 +288,9 @@ export default async function InstructorDashboardPage() {
         </h1>
         <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening across your courses today.</p>
       </div>
+
+      {/* Search */}
+      <DashboardSearch />
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
