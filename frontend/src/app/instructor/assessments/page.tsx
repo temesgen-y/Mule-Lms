@@ -20,11 +20,11 @@ type SubRow = {
 type Assessment = {
   id: string; offeringId: string; offeringLabel: string; title: string; type: string;
   instructions: string; totalMarks: number; passMark: number; timeLimitMins: number | null;
-  maxAttempts: number; weightPct: number; status: string; availableFrom: string; availableUntil: string;
+  maxAttempts: number; status: string; availableFrom: string; availableUntil: string;
   pendingCount: number; gradedCount: number;
 };
 type OfferingOption = { id: string; label: string };
-type WeightItem     = { title: string; weight: number };
+type MarksItem      = { title: string; marks: number };
 
 const TYPES       = ['quiz', 'midterm', 'final_exam', 'practice'];
 const TYPE_LABELS : Record<string, string> = { quiz: 'Quiz', midterm: 'Midterm', final_exam: 'Final Exam', practice: 'Practice' };
@@ -37,7 +37,7 @@ const initialForm = {
   offeringId: '', title: '', type: 'quiz', instructions: '',
   totalMarks: '100', timeLimitMins: '', maxAttempts: '1',
   shuffleQuestions: false, shuffleOptions: false, showResult: true, showAnswers: false,
-  availableFrom: '', availableUntil: '', weightPct: '0', status: 'draft',
+  availableFrom: '', availableUntil: '', status: 'draft',
 };
 
 async function notifyEnrolledStudents(supabase: any, offeringId: string, type: string, title: string, body: string, link?: string) {
@@ -124,10 +124,10 @@ export default function InstructorAssessmentsPage() {
     });
   }, [subData, fetchSubmissions]);
 
-  // ── Slot / weight state ─────────────────────────────────────────────────
+  // ── Slot / marks state ──────────────────────────────────────────────────
   const [slotCounts, setSlotCounts]   = useState<Record<string, number>>({});
-  const [weightItems, setWeightItems] = useState<WeightItem[]>([]);
-  const [weightBase, setWeightBase]   = useState(0); // total excluding current item
+  const [marksItems, setMarksItems]   = useState<MarksItem[]>([]);
+  const [marksBase, setMarksBase]     = useState(0); // total_marks excluding current item
 
   const getCurrentUserId = useCallback(async () => {
     const supabase = createClient();
@@ -159,7 +159,7 @@ export default function InstructorAssessmentsPage() {
     if (!offeringIds.length) { setAssessments([]); setLoading(false); return; }
     const { data, error } = await supabase
       .from('assessments')
-      .select(`id,offering_id,title,type,total_marks,pass_mark,time_limit_mins,max_attempts,weight_pct,status,available_from,available_until,course_offerings!fk_assessments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`)
+      .select(`id,offering_id,title,type,total_marks,pass_mark,time_limit_mins,max_attempts,status,available_from,available_until,course_offerings!fk_assessments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`)
       .in('offering_id', offeringIds)
       .order('created_at', { ascending: false });
     if (error) { toast.error('Failed to load assessments.'); setLoading(false); return; }
@@ -185,7 +185,7 @@ export default function InstructorAssessmentsPage() {
 
     setAssessments((data ?? []).map((r: any) => {
       const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {};
-      return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', type: r.type ?? 'quiz', instructions: r.instructions ?? '', totalMarks: r.total_marks ?? 100, passMark: r.pass_mark ?? 50, timeLimitMins: r.time_limit_mins ?? null, maxAttempts: r.max_attempts ?? 1, weightPct: r.weight_pct ?? 0, status: r.status ?? 'draft', availableFrom: r.available_from ?? '', availableUntil: r.available_until ?? '', pendingCount: pendingByAssessment[r.id] ?? 0, gradedCount: gradedByAssessment[r.id] ?? 0 };
+      return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', type: r.type ?? 'quiz', instructions: r.instructions ?? '', totalMarks: r.total_marks ?? 100, passMark: r.pass_mark ?? 50, timeLimitMins: r.time_limit_mins ?? null, maxAttempts: r.max_attempts ?? 1, status: r.status ?? 'draft', availableFrom: r.available_from ?? '', availableUntil: r.available_until ?? '', pendingCount: pendingByAssessment[r.id] ?? 0, gradedCount: gradedByAssessment[r.id] ?? 0 };
     }));
     setLoading(false);
   }, [getCurrentUserId]);
@@ -194,11 +194,11 @@ export default function InstructorAssessmentsPage() {
 
   // ── Fetch slot counts + weight summary for chosen offering ──────────────
   const fetchOfferingInfo = useCallback(async (offeringId: string, excludeAssessmentId?: string) => {
-    if (!offeringId) { setSlotCounts({}); setWeightItems([]); setWeightBase(0); return; }
+    if (!offeringId) { setSlotCounts({}); setMarksItems([]); setMarksBase(0); return; }
     const supabase = createClient();
     const [{ data: assessRes }, { data: assignRes }] = await Promise.all([
-      supabase.from('assessments').select('id, title, type, weight_pct').eq('offering_id', offeringId).neq('status', 'archived'),
-      supabase.from('assignments').select('id, title, weight_pct').eq('offering_id', offeringId).neq('status', 'archived'),
+      supabase.from('assessments').select('id, title, type, total_marks').eq('offering_id', offeringId).neq('status', 'archived'),
+      supabase.from('assignments').select('id, title, max_score').eq('offering_id', offeringId).neq('status', 'archived'),
     ]);
     const allAssess = (assessRes ?? []) as any[];
     const filtered  = excludeAssessmentId ? allAssess.filter(a => a.id !== excludeAssessmentId) : allAssess;
@@ -206,12 +206,12 @@ export default function InstructorAssessmentsPage() {
     filtered.forEach((a: any) => { if (counts[a.type] !== undefined) counts[a.type]++; });
     setSlotCounts(counts);
 
-    const items: WeightItem[] = [
-      ...filtered.map((a: any) => ({ title: a.title || TYPE_LABELS[a.type] || a.type, weight: a.weight_pct ?? 0 })),
-      ...(assignRes ?? []).map((a: any) => ({ title: a.title || 'Assignment', weight: a.weight_pct ?? 0 })),
+    const items: MarksItem[] = [
+      ...filtered.map((a: any) => ({ title: a.title || TYPE_LABELS[a.type] || a.type, marks: a.total_marks ?? 0 })),
+      ...(assignRes ?? []).map((a: any) => ({ title: a.title || 'Assignment', marks: a.max_score ?? 0 })),
     ];
-    setWeightItems(items);
-    setWeightBase(items.reduce((s, i) => s + i.weight, 0));
+    setMarksItems(items);
+    setMarksBase(items.reduce((s, i) => s + i.marks, 0));
   }, []);
 
   // Re-fetch offering info whenever the form's offeringId or editingId changes
@@ -253,7 +253,7 @@ export default function InstructorAssessmentsPage() {
       showResult: true, showAnswers: false,
       availableFrom: a.availableFrom ? new Date(a.availableFrom).toISOString().slice(0, 16) : '',
       availableUntil: a.availableUntil ? new Date(a.availableUntil).toISOString().slice(0, 16) : '',
-      weightPct: String(a.weightPct), status: a.status,
+      status: a.status,
     });
     setPendingFiles([]);
     setSubmitError('');
@@ -322,14 +322,6 @@ export default function InstructorAssessmentsPage() {
       }
     }
 
-    // ── Weight enforcement ─────────────────────────────────────────────
-    const weightPct  = parseFloat(form.weightPct) || 0;
-    const newTotal   = weightBase + weightPct;
-    if (newTotal > 100) {
-      setSubmitError(`Total weight would be ${newTotal.toFixed(1)}%. Only ${(100 - weightBase).toFixed(1)}% remaining.`);
-      return;
-    }
-
     const timeLimitMins = form.timeLimitMins ? parseInt(form.timeLimitMins, 10) : null;
     const maxAttempts   = parseInt(form.maxAttempts, 10) || 1;
     setIsSubmitting(true);
@@ -343,7 +335,7 @@ export default function InstructorAssessmentsPage() {
       shuffle_options: form.shuffleOptions, show_result: form.showResult, show_answers: form.showAnswers,
       available_from: form.availableFrom ? new Date(form.availableFrom).toISOString() : null,
       available_until: form.availableUntil ? new Date(form.availableUntil).toISOString() : null,
-      weight_pct: weightPct, status: form.status,
+      weight_pct: 0, status: form.status,
     };
     let error; let prevStatus = ''; let assessmentId: string | null = editingId;
     if (editingId) {
@@ -386,9 +378,9 @@ export default function InstructorAssessmentsPage() {
   const end          = Math.min(start + PAGE_SIZE, totalCount);
   const paginated    = filtered.slice(start, end);
 
-  // Live weight preview
-  const proposedWeight = parseFloat(form.weightPct) || 0;
-  const proposedTotal  = weightBase + proposedWeight;
+  // Live marks preview
+  const proposedMarks = parseInt(form.totalMarks, 10) || 0;
+  const proposedTotal = marksBase + proposedMarks;
 
   return (
     <div className="p-6 space-y-6">
@@ -510,51 +502,36 @@ export default function InstructorAssessmentsPage() {
                   </div>
                 </div>
 
-                {/* Weight % with live summary */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Weight %
-                    {form.offeringId && (
-                      <span className={`ml-2 text-xs font-normal ${(100 - weightBase) <= 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                        ({(100 - weightBase).toFixed(1)}% remaining)
-                      </span>
-                    )}
-                  </label>
-                  <input type="number" min={0} max={100} step={0.01} value={form.weightPct}
-                    onChange={e => setForm((f: any) => ({ ...f, weightPct: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                </div>
-
-                {/* Live weight summary */}
-                {form.offeringId && (weightItems.length > 0 || proposedWeight > 0) && (
+                {/* Live marks summary */}
+                {form.offeringId && (marksItems.length > 0 || proposedMarks > 0) && (
                   <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-xs">
-                    <p className="font-semibold text-gray-700 mb-2">Course Weight Summary</p>
+                    <p className="font-semibold text-gray-700 mb-2">Course Marks Summary <span className="text-gray-400 font-normal">(all items must total 100)</span></p>
                     <div className="space-y-1 mb-2">
-                      {weightItems.map((item, i) => (
+                      {marksItems.map((item, i) => (
                         <div key={i} className="flex justify-between text-gray-600">
                           <span className="truncate pr-2">{item.title}</span>
-                          <span className="flex-shrink-0 font-medium">{item.weight}%</span>
+                          <span className="flex-shrink-0 font-medium">{item.marks}</span>
                         </div>
                       ))}
-                      {proposedWeight > 0 && (
+                      {proposedMarks > 0 && (
                         <div className="flex justify-between text-[#4c1d95] font-semibold">
                           <span className="truncate pr-2">{form.title || '(this item)'}</span>
-                          <span className="flex-shrink-0">{proposedWeight}%</span>
+                          <span className="flex-shrink-0">{proposedMarks}</span>
                         </div>
                       )}
                     </div>
                     <div className="border-t border-gray-200 pt-2 space-y-1">
                       <div className="flex justify-between text-gray-500">
                         <span>Existing</span>
-                        <span>{weightBase.toFixed(1)}%</span>
+                        <span>{marksBase}</span>
                       </div>
                       <div className={`flex justify-between font-semibold ${proposedTotal > 100 ? 'text-red-600' : proposedTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
                         <span>Total</span>
-                        <span>{proposedTotal.toFixed(1)}%</span>
+                        <span>{proposedTotal}</span>
                       </div>
-                      {proposedTotal < 100  && <p className="text-amber-600">⚠ {(100 - proposedTotal).toFixed(1)}% unassigned — final grade uses assigned weights only.</p>}
-                      {proposedTotal > 100  && <p className="text-red-600">✗ Exceeds 100% by {(proposedTotal - 100).toFixed(1)}%</p>}
-                      {proposedTotal === 100 && <p className="text-green-600">✓ Weights balance to 100%</p>}
+                      {proposedTotal < 100  && <p className="text-amber-600">⚠ {100 - proposedTotal} marks unassigned — all items must sum to 100.</p>}
+                      {proposedTotal > 100  && <p className="text-red-600">✗ Exceeds 100 by {proposedTotal - 100} marks</p>}
+                      {proposedTotal === 100 && <p className="text-green-600">✓ Course marks total exactly 100</p>}
                     </div>
                   </div>
                 )}
@@ -655,7 +632,6 @@ export default function InstructorAssessmentsPage() {
                 <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Title</th>
                 <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Type</th>
                 <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Marks</th>
-                <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Weight</th>
                 <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Submissions</th>
                 <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Status</th>
                 <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Actions</th>
@@ -663,9 +639,9 @@ export default function InstructorAssessmentsPage() {
             </thead>
             <tbody>
               {loading
-                ? <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-gray-500">Loading...</td></tr>
+                ? <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-500">Loading...</td></tr>
                 : paginated.length === 0
-                  ? <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-gray-500">No assessments found.</td></tr>
+                  ? <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-500">No assessments found.</td></tr>
                   : paginated.flatMap(a => {
                     const isOpen = expandedId === a.id;
                     return [
@@ -676,7 +652,6 @@ export default function InstructorAssessmentsPage() {
                         </td>
                         <td className="px-5 py-3 text-sm text-gray-600">{TYPE_LABELS[a.type] ?? a.type}</td>
                         <td className="px-5 py-3 text-sm text-gray-600">{a.totalMarks}</td>
-                        <td className="px-5 py-3 text-sm text-gray-600">{a.weightPct}%</td>
                         <td className="px-5 py-3">
                           {a.pendingCount > 0 || a.gradedCount > 0 ? (
                             <div className="flex items-center gap-1.5 text-xs">
@@ -725,7 +700,7 @@ export default function InstructorAssessmentsPage() {
                       </tr>,
                       isOpen ? (
                         <tr key={`${a.id}-panel`} className="border-b border-purple-100">
-                          <td colSpan={7} className="px-5 py-4 bg-purple-50/20">
+                          <td colSpan={6} className="px-5 py-4 bg-purple-50/20">
                             <InlineSubmissionsPanel
                               rows={subData[a.id]}
                               loading={subLoading.has(a.id)}
@@ -839,12 +814,25 @@ function InlineSubmissionsPanel({
                   {r.score != null ? `${r.score} / ${totalMarks}` : <span className="text-gray-400">—</span>}
                 </td>
                 <td className="px-4 py-2.5 text-right">
-                  <Link
-                    href={`/instructor/assessments/${assessmentId}/submissions`}
-                    className="text-xs text-[#4c1d95] hover:underline font-medium"
-                  >
-                    Grade →
-                  </Link>
+                  <div className="flex items-center justify-end gap-2">
+                    <Link
+                      href={`/instructor/assessments/${assessmentId}/submissions?search=${encodeURIComponent(r.studentName)}&tab=${r.status === 'graded' ? 'graded' : 'pending'}`}
+                      title="View answers"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#4c1d95]/10 text-[#4c1d95] hover:bg-[#4c1d95]/20 text-xs font-medium transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      View
+                    </Link>
+                    <Link
+                      href={`/instructor/assessments/${assessmentId}/submissions?search=${encodeURIComponent(r.studentName)}&tab=${r.status === 'graded' ? 'graded' : 'pending'}`}
+                      className="text-xs text-[#4c1d95] hover:underline font-medium"
+                    >
+                      Grade →
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -127,20 +127,68 @@ export default function StudentHomePage() {
         .eq('user_id', userId)
         .single();
 
-      // 2. Active enrollments with nested data
-      const { data: enrollments } = await supabase
+      // 2. Active enrollments — scalar only, no FK hints
+      const { data: enrollmentRows, error: enrErr2 } = await supabase
         .from('enrollments')
-        .select(`
-          offering_id,
-          course_offerings!fk_enrollments_offering(
-            id, section_name, enrolled_count, status,
-            courses!fk_course_offerings_course(code, title),
-            academic_terms!fk_course_offerings_term(start_date, end_date),
-            course_instructors(role, users!fk_course_instructors_instructor(first_name, last_name))
-          )
-        `)
+        .select('offering_id')
         .eq('student_id', userId)
         .eq('status', 'active');
+
+      if (enrErr2) console.error('[Home] enrollments:', enrErr2);
+
+      const enrolledOfferingIds = ((enrollmentRows ?? []) as any[]).map(r => r.offering_id as string);
+
+      // Fetch offerings, courses, terms, and instructors separately
+      const { data: offeringsData } = enrolledOfferingIds.length > 0
+        ? await supabase
+            .from('course_offerings')
+            .select('id, section_name, enrolled_count, status, course_id, term_id')
+            .in('id', enrolledOfferingIds)
+        : { data: [] };
+
+      const offCourseIds = [...new Set(((offeringsData ?? []) as any[]).map(o => o.course_id))];
+      const offTermIds   = [...new Set(((offeringsData ?? []) as any[]).map(o => o.term_id))];
+
+      const [{ data: coursesData2 }, { data: termsData2 }, { data: instructorsData }] = await Promise.all([
+        offCourseIds.length > 0
+          ? supabase.from('courses').select('id, code, title').in('id', offCourseIds)
+          : Promise.resolve({ data: [] }),
+        offTermIds.length > 0
+          ? supabase.from('academic_terms').select('id, start_date, end_date').in('id', offTermIds)
+          : Promise.resolve({ data: [] }),
+        enrolledOfferingIds.length > 0
+          ? supabase.from('course_instructors')
+              .select('offering_id, role, users(first_name, last_name)')
+              .in('offering_id', enrolledOfferingIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const courseMap2: Record<string, any> = {};
+      ((coursesData2 ?? []) as any[]).forEach(c => { courseMap2[c.id] = c; });
+      const termMap2: Record<string, any> = {};
+      ((termsData2 ?? []) as any[]).forEach(t => { termMap2[t.id] = t; });
+      const instructorsByOffering: Record<string, any[]> = {};
+      ((instructorsData ?? []) as any[]).forEach(i => {
+        if (!instructorsByOffering[i.offering_id]) instructorsByOffering[i.offering_id] = [];
+        instructorsByOffering[i.offering_id].push(i);
+      });
+
+      // Rebuild the enrollments shape the rest of the code expects
+      const enrollments = ((enrollmentRows ?? []) as any[]).map(r => {
+        const off = ((offeringsData ?? []) as any[]).find(o => o.id === r.offering_id) ?? {};
+        return {
+          offering_id: r.offering_id,
+          course_offerings: {
+            id: off.id,
+            section_name: off.section_name,
+            enrolled_count: off.enrolled_count,
+            status: off.status,
+            courses: courseMap2[off.course_id] ?? null,
+            academic_terms: termMap2[off.term_id] ?? null,
+            course_instructors: instructorsByOffering[off.id] ?? [],
+          },
+        };
+      });
 
       const rows = (enrollments ?? []) as any[];
       const activeCourses = rows.filter(r =>

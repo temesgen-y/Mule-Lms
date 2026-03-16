@@ -26,29 +26,54 @@ export default function GradesPage() {
       const supabase = createClient();
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) { setLoading(false); return; }
-      const { data: appUser } = await supabase.from('users').select('id').eq('auth_user_id', authData.user.id).single();
+
+      const { data: appUser } = await supabase
+        .from('users').select('id').eq('auth_user_id', authData.user.id).single();
       if (!appUser) { setLoading(false); return; }
       const userId = (appUser as any).id;
 
-      const { data: rows } = await supabase
+      // Step 1: enrollments (scalar columns only — no FK hints)
+      const { data: enrollRows, error: enrErr } = await supabase
         .from('enrollments')
-        .select(`
-          id, final_score, final_grade, status,
-          offering_id,
-          course_offerings!fk_enrollments_offering(
-            id, section_name,
-            courses!fk_course_offerings_course(code, title, credit_hours),
-            academic_terms!fk_course_offerings_term(term_name, is_current)
-          )
-        `)
+        .select('id, offering_id, final_score, final_grade, status')
         .eq('student_id', userId)
         .in('status', ['active', 'completed'])
-        .order('created_at', { ascending: false });
+        .order('enrolled_at', { ascending: false });
 
-      const mapped: CourseGrade[] = ((rows ?? []) as any[]).map(r => {
-        const o = r.course_offerings ?? {};
-        const c = o.courses ?? {};
-        const t = o.academic_terms ?? {};
+      if (enrErr) { console.error('[Grades] enrollments:', enrErr); setLoading(false); return; }
+      if (!enrollRows || enrollRows.length === 0) { setLoading(false); return; }
+
+      // Step 2: course offerings for those offering IDs
+      const offeringIds = (enrollRows as any[]).map(r => r.offering_id);
+
+      const { data: offeringRows, error: offrErr } = await supabase
+        .from('course_offerings')
+        .select('id, section_name, course_id, term_id')
+        .in('id', offeringIds);
+
+      if (offrErr) console.error('[Grades] offerings:', offrErr);
+
+      // Step 3: courses and terms
+      const courseIds = [...new Set(((offeringRows ?? []) as any[]).map(o => o.course_id))];
+      const termIds   = [...new Set(((offeringRows ?? []) as any[]).map(o => o.term_id))];
+
+      const [{ data: courseRows }, { data: termRows }] = await Promise.all([
+        supabase.from('courses').select('id, code, title, credit_hours').in('id', courseIds),
+        supabase.from('academic_terms').select('id, term_name').in('id', termIds),
+      ]);
+
+      // Build lookup maps
+      const offeringMap: Record<string, any> = {};
+      ((offeringRows ?? []) as any[]).forEach(o => { offeringMap[o.id] = o; });
+      const courseMap: Record<string, any> = {};
+      ((courseRows ?? []) as any[]).forEach(c => { courseMap[c.id] = c; });
+      const termMap: Record<string, any> = {};
+      ((termRows ?? []) as any[]).forEach(t => { termMap[t.id] = t; });
+
+      const mapped: CourseGrade[] = (enrollRows as any[]).map(r => {
+        const offering = offeringMap[r.offering_id] ?? {};
+        const course   = courseMap[offering.course_id ?? ''] ?? {};
+        const term     = termMap[offering.term_id ?? ''] ?? {};
         const gradeStatus: CourseGrade['status'] =
           r.final_grade != null ? 'final'
           : r.final_score != null ? 'in_progress'
@@ -56,12 +81,12 @@ export default function GradesPage() {
         return {
           enrollmentId: r.id,
           offeringId:   r.offering_id,
-          courseCode:   c.code ?? '—',
-          courseTitle:  c.title ?? '—',
-          creditHours:  c.credit_hours ?? 3,
-          termName:     t.term_name ?? '—',
-          finalScore:   r.final_score ?? null,
-          finalGrade:   r.final_grade ?? null,
+          courseCode:   course.code  ?? '—',
+          courseTitle:  course.title ?? '—',
+          creditHours:  course.credit_hours ?? 3,
+          termName:     term.term_name ?? '—',
+          finalScore:   r.final_score  ?? null,
+          finalGrade:   r.final_grade  ?? null,
           status:       gradeStatus,
         };
       });

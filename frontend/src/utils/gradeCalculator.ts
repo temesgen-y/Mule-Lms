@@ -15,57 +15,21 @@ export const getLetterGrade = (scorePct: number): string => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GradebookEntry
-// represents one graded item when calculating a final weighted grade
-// ─────────────────────────────────────────────────────────────────────────────
-export interface GradebookEntry {
-  raw_score  : number;
-  weight_pct : number;
-  total_marks: number; // max possible for this item
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// calculateFinalGrade
-// sums all weighted scores and returns finalScore + letterGrade + breakdown
-// ─────────────────────────────────────────────────────────────────────────────
-export const calculateFinalGrade = (
-  entries: GradebookEntry[]
-): {
-  finalScore : number;  // weighted sum (0–100)
-  letterGrade: string;
-  breakdown  : { weightedScore: number; scorePct: number; weight_pct: number }[];
-} => {
-  const breakdown = entries.map(e => ({
-    scorePct     : e.total_marks > 0 ? (e.raw_score / e.total_marks) * 100 : 0,
-    weightedScore: e.total_marks > 0 ? (e.raw_score / e.total_marks) * e.weight_pct : 0,
-    weight_pct   : e.weight_pct,
-  }));
-
-  const finalScore = breakdown.reduce((sum, b) => sum + b.weightedScore, 0);
-
-  return {
-    finalScore : Math.round(finalScore * 100) / 100,
-    letterGrade: getLetterGrade(finalScore),
-    breakdown,
-  };
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 // getGradeColor
 // returns Tailwind color classes for a grade badge
 // ─────────────────────────────────────────────────────────────────────────────
 export const getGradeColor = (grade: string | null | undefined): string => {
   switch (grade) {
-    case 'A' : return 'bg-green-100 text-green-800';
-    case 'A-': return 'bg-green-100 text-green-700';
-    case 'B+': return 'bg-blue-100 text-blue-800';
-    case 'B' : return 'bg-blue-100 text-blue-700';
-    case 'B-': return 'bg-blue-100 text-blue-600';
-    case 'C+': return 'bg-yellow-100 text-yellow-800';
-    case 'C' : return 'bg-yellow-100 text-yellow-700';
-    case 'D' : return 'bg-orange-100 text-orange-700';
-    case 'F' : return 'bg-red-100 text-red-700';
-    default  : return 'bg-gray-100 text-gray-600';
+    case 'A' : return 'bg-green-100 text-green-800 border-green-200';
+    case 'A-': return 'bg-green-100 text-green-700 border-green-200';
+    case 'B+': return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'B' : return 'bg-blue-100 text-blue-700 border-blue-200';
+    case 'B-': return 'bg-blue-100 text-blue-600 border-blue-200';
+    case 'C+': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'C' : return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    case 'D' : return 'bg-orange-100 text-orange-700 border-orange-200';
+    case 'F' : return 'bg-red-100 text-red-700 border-red-200';
+    default  : return 'bg-gray-100 text-gray-500 border-gray-200';
   }
 };
 
@@ -86,11 +50,33 @@ export const getGpaPoints = (grade: string): number => {
 // calculateGpa — weighted GPA across courses using credit hours
 // ─────────────────────────────────────────────────────────────────────────────
 export const calculateGpa = (
-  grades: { letter: string; credits: number }[]
+  courses: { letter: string; credits: number }[]
 ): number => {
-  const completed = grades.filter(g => g.letter != null && g.letter !== '');
+  const completed = courses.filter(c => c.letter != null && c.letter !== '');
   if (completed.length === 0) return 0;
-  const totalPoints  = completed.reduce((sum, g) => sum + getGpaPoints(g.letter) * g.credits, 0);
-  const totalCredits = completed.reduce((sum, g) => sum + g.credits, 0);
+  const totalPoints  = completed.reduce((sum, c) => sum + getGpaPoints(c.letter) * c.credits, 0);
+  const totalCredits = completed.reduce((sum, c) => sum + c.credits, 0);
   return totalCredits > 0 ? Math.round((totalPoints / totalCredits) * 100) / 100 : 0;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validateCourseTotalMarks
+// all items in a course must sum to exactly 100
+// returns status of the current total
+// ─────────────────────────────────────────────────────────────────────────────
+export const validateCourseTotalMarks = (
+  items: { total_marks: number }[]
+): {
+  currentTotal : number;
+  remaining    : number;
+  isValid      : boolean;
+  isOver       : boolean;
+} => {
+  const currentTotal = items.reduce((sum, i) => sum + (i.total_marks ?? 0), 0);
+  return {
+    currentTotal,
+    remaining : 100 - currentTotal,
+    isValid   : currentTotal === 100,
+    isOver    : currentTotal > 100,
+  };
 };

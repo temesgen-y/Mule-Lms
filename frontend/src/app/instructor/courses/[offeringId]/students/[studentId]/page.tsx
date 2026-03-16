@@ -27,7 +27,6 @@ type AssessmentAttempt = {
   assessTitle:   string;
   assessType:    string;
   totalMarks:    number;
-  weightPct:     number | null;
   attemptNumber: number;
   status:        string;
   submittedAt:   string | null;
@@ -48,7 +47,6 @@ type AssignmentSubmission = {
   assignmentId: string;
   assignTitle:  string;
   maxScore:     number;
-  weightPct:    number | null;
   textBody:     string | null;
   fileUrls:     string[] | null;
   status:       string;
@@ -64,13 +62,10 @@ type AssignmentSubmission = {
 };
 
 type GradeSummaryRow = {
-  title:         string;
-  type:          string;
-  rawScore:      number | null;
-  maxScore:      number;
-  weightPct:     number | null;
-  weightedScore: number | null;
-  letterGrade:   string | null;
+  title:    string;
+  type:     string;
+  rawScore: number | null;
+  maxScore: number;
 };
 
 type StudentInfo = {
@@ -187,7 +182,7 @@ export default function StudentDetailPage() {
       // ── Assessments ──────────────────────────────────────────────────
       const { data: assessData } = await supabase
         .from('assessments')
-        .select('id, title, type, total_marks, weight_pct')
+        .select('id, title, type, total_marks')
         .eq('offering_id', offeringId)
         .in('type', ['quiz', 'midterm', 'final_exam'])
         .eq('status', 'published')
@@ -284,7 +279,6 @@ export default function StudentDetailPage() {
           assessTitle:   am.title ?? '—',
           assessType:    am.type  ?? '—',
           totalMarks:    am.total_marks ?? 100,
-          weightPct:     am.weight_pct ?? null,
           attemptNumber: att.attempt_number,
           status:        att.status,
           submittedAt:   att.submitted_at ?? null,
@@ -304,7 +298,7 @@ export default function StudentDetailPage() {
       // ── Assignments ──────────────────────────────────────────────────
       const { data: assignData } = await supabase
         .from('assignments')
-        .select('id, title, max_score, weight_pct')
+        .select('id, title, max_score')
         .eq('offering_id', offeringId)
         .order('created_at');
 
@@ -338,7 +332,6 @@ export default function StudentDetailPage() {
           assignmentId: assign.id,
           assignTitle:  assign.title ?? '—',
           maxScore:     assign.max_score ?? 100,
-          weightPct:    assign.weight_pct ?? null,
           textBody:     sub.text_body ?? null,
           fileUrls:     sub.file_urls ?? null,
           status:       sub.status,
@@ -357,7 +350,7 @@ export default function StudentDetailPage() {
       // ── Grade summary from gradebook_items ───────────────────────────
       const { data: gbItems } = await supabase
         .from('gradebook_items')
-        .select('assessment_id, assignment_id, raw_score, weight_pct, weighted_score, letter_grade')
+        .select('assessment_id, assignment_id, raw_score, total_marks')
         .eq('enrollment_id', enroll.id);
 
       const gbRows = (gbItems ?? []) as any[];
@@ -365,24 +358,18 @@ export default function StudentDetailPage() {
         if (gb.assessment_id) {
           const a = assessMap[gb.assessment_id];
           return {
-            title:         a?.title ?? 'Assessment',
-            type:          a?.type  ?? 'assessment',
-            rawScore:      gb.raw_score,
-            maxScore:      a?.total_marks ?? 100,
-            weightPct:     gb.weight_pct,
-            weightedScore: gb.weighted_score,
-            letterGrade:   gb.letter_grade,
+            title:    a?.title ?? 'Assessment',
+            type:     a?.type  ?? 'assessment',
+            rawScore: gb.raw_score,
+            maxScore: gb.total_marks ?? a?.total_marks ?? 100,
           };
         } else {
           const a = assignMap[gb.assignment_id];
           return {
-            title:         a?.title ?? 'Assignment',
-            type:          'assignment',
-            rawScore:      gb.raw_score,
-            maxScore:      a?.max_score ?? 100,
-            weightPct:     gb.weight_pct,
-            weightedScore: gb.weighted_score,
-            letterGrade:   gb.letter_grade,
+            title:    a?.title ?? 'Assignment',
+            type:     'assignment',
+            rawScore: gb.raw_score,
+            maxScore: gb.total_marks ?? a?.max_score ?? 100,
           };
         }
       });
@@ -454,14 +441,10 @@ export default function StudentDetailPage() {
       return;
     }
 
-    if (att.weightPct != null && student) {
-      await updateGradebookItem(supabase, student.enrollmentId, studentId, att.assessmentId, 'assessment', raw, att.totalMarks, att.weightPct);
-      // Refresh final grade
+    if (student) {
+      await updateGradebookItem(supabase, student.enrollmentId, studentId, att.assessmentId, 'assessment', raw, att.totalMarks, 0);
       const { data: freshEnroll } = await supabase.from('enrollments').select('final_score, final_grade').eq('id', student.enrollmentId).maybeSingle();
       if (freshEnroll) setStudent(prev => prev ? { ...prev, finalScore: (freshEnroll as any).final_score, finalGrade: (freshEnroll as any).final_grade } : prev);
-      // Refresh grade summary
-      const { data: gbItems } = await supabase.from('gradebook_items').select('assessment_id, assignment_id, raw_score, weight_pct, weighted_score, letter_grade').eq('enrollment_id', student.enrollmentId);
-      if (gbItems) buildGradeSummary(gbItems as any[], gradeSummary);
     }
 
     // Notify student
@@ -518,8 +501,8 @@ export default function StudentDetailPage() {
       return;
     }
 
-    if (sub.weightPct != null && student) {
-      await updateGradebookItem(supabase, student.enrollmentId, studentId, sub.assignmentId, 'assignment', raw, sub.maxScore, sub.weightPct);
+    if (student) {
+      await updateGradebookItem(supabase, student.enrollmentId, studentId, sub.assignmentId, 'assignment', raw, sub.maxScore, 0);
       const { data: freshEnroll } = await supabase.from('enrollments').select('final_score, final_grade').eq('id', student.enrollmentId).maybeSingle();
       if (freshEnroll) setStudent(prev => prev ? { ...prev, finalScore: (freshEnroll as any).final_score, finalGrade: (freshEnroll as any).final_grade } : prev);
     }
@@ -708,10 +691,8 @@ export default function StudentDetailPage() {
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Score</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Weighted</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Grade</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Scored</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Max</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -719,37 +700,21 @@ export default function StudentDetailPage() {
                   <tr key={i} className="hover:bg-gray-50/50">
                     <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
                     <td className="px-4 py-3 text-gray-500">{TYPE_LABELS[row.type] ?? row.type}</td>
-                    <td className="px-4 py-3 text-center">
-                      {row.rawScore != null ? `${row.rawScore}/${row.maxScore}` : '—'}
+                    <td className="px-4 py-3 text-center font-semibold text-gray-900">
+                      {row.rawScore != null ? row.rawScore : <span className="text-amber-500 text-xs font-medium">pending</span>}
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-500">
-                      {row.weightPct != null ? `${row.weightPct}%` : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center font-semibold text-gray-800">
-                      {row.weightedScore != null ? row.weightedScore.toFixed(1) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {row.letterGrade ? (
-                        <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-lg ${getGradeColor(row.letterGrade)}`}>
-                          {row.letterGrade}
-                        </span>
-                      ) : '—'}
-                    </td>
+                    <td className="px-4 py-3 text-center text-gray-500">{row.maxScore}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-700 text-right">Final Grade:</td>
+                  <td colSpan={2} className="px-4 py-3 text-sm font-semibold text-gray-700 text-right">Final Grade:</td>
                   <td className="px-4 py-3 text-center font-bold text-gray-900">
-                    {student?.finalScore != null ? student.finalScore.toFixed(1) : '—'}
+                    {student?.finalScore != null ? `${student.finalScore.toFixed(1)}%` : '—'}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    {student?.finalGrade ? (
-                      <span className={`inline-block text-sm font-bold px-2.5 py-1 rounded-lg ${getGradeColor(student.finalGrade)}`}>
-                        {student.finalGrade}
-                      </span>
-                    ) : '—'}
+                  <td className="px-4 py-3 text-center font-bold text-gray-900">
+                    {student?.finalGrade ?? '—'}
                   </td>
                 </tr>
               </tfoot>

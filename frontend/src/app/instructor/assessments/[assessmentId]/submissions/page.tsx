@@ -66,7 +66,6 @@ type AssessmentInfo = {
   title: string;
   type: string;
   total_marks: number;
-  weight_pct: number | null;
   offeringId: string;
   courseLabel: string;
 };
@@ -112,7 +111,7 @@ export default function AssessmentSubmissionsPage() {
       // ── Assessment info ──────────────────────────────────────────────────
       const { data: assess } = await supabase
         .from('assessments')
-        .select('id, title, type, total_marks, weight_pct, offering_id')
+        .select('id, title, type, total_marks, offering_id')
         .eq('id', assessmentId)
         .maybeSingle();
       if (!assess) { setError(`Assessment not found (id: ${assessmentId})`); return; }
@@ -132,7 +131,7 @@ export default function AssessmentSubmissionsPage() {
 
       setInfo({
         id: a.id, title: a.title, type: a.type,
-        total_marks: a.total_marks, weight_pct: a.weight_pct,
+        total_marks: a.total_marks,
         offeringId: a.offering_id, courseLabel,
       });
 
@@ -367,9 +366,7 @@ export default function AssessmentSubmissionsPage() {
     }
 
     // Sync to gradebook
-    if (info.weight_pct != null) {
-      await updateGradebookItem(supabase, att.enrollmentId, att.studentId, info.id, 'assessment', raw, info.total_marks, info.weight_pct);
-    }
+    await updateGradebookItem(supabase, att.enrollmentId, att.studentId, info.id, 'assessment', raw, info.total_marks, 0);
 
     toast.success(`Grade saved: ${raw}/${info.total_marks}`);
     setAttempts(prev => prev.map(a =>
@@ -427,9 +424,6 @@ export default function AssessmentSubmissionsPage() {
           <span>{TYPE_LABELS[info?.type ?? ''] ?? info?.type}</span>
           <span className="text-gray-300">·</span>
           <span>{info?.total_marks} marks</span>
-          {info?.weight_pct != null && (
-            <><span className="text-gray-300">·</span><span>{info.weight_pct}% of final grade</span></>
-          )}
         </p>
       </div>
 

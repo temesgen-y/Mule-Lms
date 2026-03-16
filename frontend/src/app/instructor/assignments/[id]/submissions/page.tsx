@@ -11,7 +11,6 @@ type AssignmentInfo = {
   id: string;
   title: string;
   max_score: number;
-  weight_pct: number;
   offering_id: string;
   course_name: string;
   due_date: string;
@@ -64,7 +63,7 @@ export default function AssignmentSubmissionsPage() {
       // Fetch assignment details
       const { data: asgn } = await supabase
         .from('assignments')
-        .select(`id, title, max_score, weight_pct, offering_id, due_date, course_offerings(courses(title))`)
+        .select(`id, title, max_score, offering_id, due_date, course_offerings(courses(title))`)
         .eq('id', id)
         .single();
 
@@ -74,7 +73,6 @@ export default function AssignmentSubmissionsPage() {
         id: asgn.id,
         title: asgn.title,
         max_score: asgn.max_score,
-        weight_pct: (asgn as any).weight_pct ?? 0,
         offering_id: asgn.offering_id,
         due_date: asgn.due_date,
         course_name: (asgn as any).course_offerings?.courses?.title ?? 'Unknown Course',
@@ -170,7 +168,7 @@ export default function AssignmentSubmissionsPage() {
         'assignment',
         scoreNum,
         assignment.max_score,
-        assignment.weight_pct,
+        0,
       );
       toast.success(`Grade saved for ${sub.student_name}`);
     } catch (err: any) {

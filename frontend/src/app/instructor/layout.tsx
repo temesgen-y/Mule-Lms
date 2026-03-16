@@ -66,6 +66,7 @@ export default async function InstructorLayout({
       const co = (sorted[0] as any).course_offerings;
       if (co) {
         courseInfo = {
+          offeringId: co.id ?? '',
           courseCode: co.courses?.code ?? '',
           courseTitle: co.courses?.title ?? '',
           termName: co.academic_terms?.term_name ?? '',

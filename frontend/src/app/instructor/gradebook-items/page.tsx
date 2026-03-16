@@ -3,21 +3,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { getGradeColor } from '@/utils/gradeCalculator';
+import { upsertGradebookItem } from '@/utils/updateGradebook';
 
 const PAGE_SIZE = 10;
-const LETTER_GRADES = ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'D', 'F'] as const;
 
 type GradebookItem = {
   id: string;
   enrollment_id: string;
   assessment_id: string | null;
   assignment_id: string | null;
-  grade_id: string | null;
   raw_score: number;
-  weight_pct: number;
-  weighted_score: number;
-  letter_grade: string | null;
+  total_marks: number;
   is_overridden: boolean;
   override_by: string | null;
   override_note: string | null;
@@ -28,22 +24,18 @@ type GradebookItem = {
   item_type?: 'assessment' | 'assignment';
 };
 
-type OfferingOption = { id: string; label: string };
-type EnrollmentOption = { id: string; student_id: string; student_name: string };
-type AssessmentOption = { id: string; title: string; weight_pct: number };
-type AssignmentOption = { id: string; title: string; weight_pct: number };
-type GradeOption = { id: string; label: string; raw_score: number; total_marks: number };
+type OfferingOption    = { id: string; label: string };
+type EnrollmentOption  = { id: string; student_id: string; student_name: string };
+type AssessmentOption  = { id: string; title: string; total_marks: number };
+type AssignmentOption  = { id: string; title: string; max_score: number };
 
 const blank = () => ({
   enrollment_id: '',
   item_type: 'assessment' as 'assessment' | 'assignment',
   assessment_id: null as string | null,
   assignment_id: null as string | null,
-  grade_id: null as string | null,
   raw_score: 0,
-  weight_pct: 0,
-  weighted_score: 0,
-  letter_grade: null as string | null,
+  total_marks: 0,
   is_overridden: false,
   override_note: '',
 });
@@ -51,20 +43,19 @@ const blank = () => ({
 export default function GradebookItemsPage() {
   const supabase = createClient();
 
-  const [items, setItems] = useState<GradebookItem[]>([]);
-  const [offerings, setOfferings] = useState<OfferingOption[]>([]);
+  const [items, setItems]           = useState<GradebookItem[]>([]);
+  const [offerings, setOfferings]   = useState<OfferingOption[]>([]);
   const [enrollments, setEnrollments] = useState<EnrollmentOption[]>([]);
   const [assessments, setAssessments] = useState<AssessmentOption[]>([]);
   const [assignments, setAssignments] = useState<AssignmentOption[]>([]);
-  const [gradeOptions, setGradeOptions] = useState<GradeOption[]>([]);
 
   const [filterOffering, setFilterOffering] = useState('');
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<GradebookItem | null>(null);
-  const [form, setForm] = useState(blank());
-  const [saving, setSaving] = useState(false);
+  const [page, setPage]             = useState(1);
+  const [loading, setLoading]       = useState(true);
+  const [showModal, setShowModal]   = useState(false);
+  const [editing, setEditing]       = useState<GradebookItem | null>(null);
+  const [form, setForm]             = useState(blank());
+  const [saving, setSaving]         = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GradebookItem | null>(null);
   const [offeringForForm, setOfferingForForm] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
@@ -104,8 +95,8 @@ export default function GradebookItemsPage() {
     const { data, error } = await supabase
       .from('gradebook_items')
       .select(`
-        id, enrollment_id, assessment_id, assignment_id, grade_id,
-        raw_score, weight_pct, weighted_score, letter_grade,
+        id, enrollment_id, assessment_id, assignment_id,
+        raw_score, total_marks,
         is_overridden, override_by, override_note, recorded_at, updated_at,
         enrollments!fk_gradebook_items_enrollment(
           student_id, users!fk_enrollments_student(first_name, last_name)
@@ -123,11 +114,8 @@ export default function GradebookItemsPage() {
       enrollment_id: r.enrollment_id,
       assessment_id: r.assessment_id,
       assignment_id: r.assignment_id,
-      grade_id: r.grade_id,
       raw_score: r.raw_score,
-      weight_pct: r.weight_pct,
-      weighted_score: r.weighted_score,
-      letter_grade: r.letter_grade,
+      total_marks: r.total_marks ?? 0,
       is_overridden: r.is_overridden,
       override_by: r.override_by,
       override_note: r.override_note,
@@ -152,33 +140,17 @@ export default function GradebookItemsPage() {
       student_id: r.student_id,
       student_name: r.users ? `${r.users.first_name} ${r.users.last_name}` : r.student_id,
     })));
-    const { data: aData } = await supabase.from('assessments').select('id, title, weight_pct').eq('offering_id', offeringId);
+    const { data: aData } = await supabase.from('assessments').select('id, title, total_marks').eq('offering_id', offeringId).neq('status', 'archived');
     setAssessments(aData ?? []);
-    const { data: assignData } = await supabase.from('assignments').select('id, title, weight_pct').eq('offering_id', offeringId);
+    const { data: assignData } = await supabase.from('assignments').select('id, title, max_score').eq('offering_id', offeringId).neq('status', 'archived');
     setAssignments(assignData ?? []);
-  };
-
-  const loadGradeOptions = async (enrollmentId: string, itemType: string) => {
-    const { data } = await supabase
-      .from('grades')
-      .select('id, raw_score, total_marks, assessment_id, assignment_id')
-      .eq('enrollment_id', enrollmentId);
-    const filtered = (data ?? []).filter((g: any) =>
-      itemType === 'assessment' ? g.assessment_id !== null : g.assignment_id !== null
-    );
-    setGradeOptions(filtered.map((g: any) => ({
-      id: g.id,
-      label: `Score: ${g.raw_score}/${g.total_marks}`,
-      raw_score: g.raw_score,
-      total_marks: g.total_marks,
-    })));
   };
 
   const openAdd = () => {
     setEditing(null);
     setForm(blank());
     setOfferingForForm(filterOffering);
-    setEnrollments([]); setAssessments([]); setAssignments([]); setGradeOptions([]);
+    setEnrollments([]); setAssessments([]); setAssignments([]);
     if (filterOffering) loadFormData(filterOffering);
     setShowModal(true);
   };
@@ -190,63 +162,40 @@ export default function GradebookItemsPage() {
       item_type: item.item_type ?? 'assessment',
       assessment_id: item.assessment_id,
       assignment_id: item.assignment_id,
-      grade_id: item.grade_id,
       raw_score: item.raw_score,
-      weight_pct: item.weight_pct,
-      weighted_score: item.weighted_score,
-      letter_grade: item.letter_grade,
+      total_marks: item.total_marks,
       is_overridden: item.is_overridden,
       override_note: item.override_note ?? '',
     });
     setShowModal(true);
   };
 
-  const calcWeightedScore = (raw: number, weight: number) =>
-    Math.round((raw * weight / 100) * 100) / 100;
-
   const handleSave = async () => {
     if (!form.enrollment_id) { toast.error('Select a student'); return; }
     if (form.item_type === 'assessment' && !form.assessment_id) { toast.error('Select an assessment'); return; }
     if (form.item_type === 'assignment' && !form.assignment_id) { toast.error('Select an assignment'); return; }
+    if (form.total_marks <= 0) { toast.error('Total marks must be > 0'); return; }
+    if (form.raw_score < 0 || form.raw_score > form.total_marks) {
+      toast.error(`Score must be between 0 and ${form.total_marks}`); return;
+    }
     if (form.is_overridden && !form.override_note) { toast.error('Override note required when overriding'); return; }
 
     setSaving(true);
-    const weighted_score = calcWeightedScore(form.raw_score, form.weight_pct);
-
-    const payload = {
-      enrollment_id: form.enrollment_id,
-      assessment_id: form.item_type === 'assessment' ? form.assessment_id : null,
-      assignment_id: form.item_type === 'assignment' ? form.assignment_id : null,
-      grade_id: form.grade_id || null,
-      raw_score: form.raw_score,
-      weight_pct: form.weight_pct,
-      weighted_score,
-      letter_grade: form.letter_grade || null,
-      is_overridden: form.is_overridden,
-      override_by: form.is_overridden ? currentUserId : null,
-      override_note: form.is_overridden ? form.override_note : null,
-    };
-
-    if (editing) {
-      const { error } = await supabase.from('gradebook_items').update(payload).eq('id', editing.id);
-      if (error) { toast.error(error.message); setSaving(false); return; }
-      toast.success('Gradebook item updated');
-    } else {
-      const { error } = await supabase.from('gradebook_items').insert(payload);
-      if (error) {
-        if (error.message.includes('uq_gradebook_items')) {
-          toast.error('A gradebook entry already exists for this enrollment and item.');
-        } else {
-          toast.error(error.message);
-        }
-        setSaving(false);
-        return;
-      }
-      toast.success('Gradebook item recorded');
+    const itemId = (form.item_type === 'assessment' ? form.assessment_id : form.assignment_id) as string;
+    try {
+      await upsertGradebookItem(
+        supabase, form.enrollment_id, itemId, form.item_type,
+        form.raw_score, form.total_marks,
+        currentUserId, form.is_overridden, form.override_note,
+      );
+      toast.success(editing ? 'Gradebook item updated' : 'Gradebook item recorded');
+      setShowModal(false);
+      loadItems();
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to save');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowModal(false);
-    loadItems();
   };
 
   const handleDelete = async () => {
@@ -258,7 +207,7 @@ export default function GradebookItemsPage() {
     loadItems();
   };
 
-  const paginated = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const paginated  = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.ceil(items.length / PAGE_SIZE);
 
   return (
@@ -289,14 +238,14 @@ export default function GradebookItemsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Student', 'Item', 'Type', 'Raw', 'Weight', 'Weighted', 'Letter', 'Override', 'Actions'].map(h => (
+                  {['Student', 'Item', 'Type', 'Scored', 'Max', 'Override', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paginated.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">No gradebook entries found</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">No gradebook entries found</td></tr>
                 ) : paginated.map(item => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{item.student_name}</td>
@@ -306,14 +255,8 @@ export default function GradebookItemsPage() {
                         {item.item_type}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{item.raw_score}</td>
-                    <td className="px-4 py-3">{item.weight_pct}%</td>
-                    <td className="px-4 py-3 font-medium">{item.weighted_score}</td>
-                    <td className="px-4 py-3">
-                      {item.letter_grade ? (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getGradeColor(item.letter_grade)}`}>{item.letter_grade}</span>
-                      ) : '—'}
-                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{item.raw_score}</td>
+                    <td className="px-4 py-3 text-gray-500">{item.total_marks}</td>
                     <td className="px-4 py-3">
                       {item.is_overridden ? (
                         <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs">Overridden</span>
@@ -363,10 +306,7 @@ export default function GradebookItemsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Student</label>
                     <select
                       value={form.enrollment_id}
-                      onChange={e => {
-                        setForm(f => ({ ...f, enrollment_id: e.target.value }));
-                        if (e.target.value) loadGradeOptions(e.target.value, form.item_type);
-                      }}
+                      onChange={e => setForm(f => ({ ...f, enrollment_id: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       disabled={!offeringForForm}
                     >
@@ -379,7 +319,7 @@ export default function GradebookItemsPage() {
                     <div className="flex gap-4">
                       {(['assessment', 'assignment'] as const).map(t => (
                         <label key={t} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="radio" checked={form.item_type === t} onChange={() => setForm(f => ({ ...f, item_type: t, assessment_id: null, assignment_id: null, weight_pct: 0 }))} />
+                          <input type="radio" checked={form.item_type === t} onChange={() => setForm(f => ({ ...f, item_type: t, assessment_id: null, assignment_id: null, total_marks: 0 }))} />
                           {t.charAt(0).toUpperCase() + t.slice(1)}
                         </label>
                       ))}
@@ -394,19 +334,20 @@ export default function GradebookItemsPage() {
                       onChange={e => {
                         if (form.item_type === 'assessment') {
                           const a = assessments.find(a => a.id === e.target.value);
-                          setForm(f => ({ ...f, assessment_id: e.target.value, weight_pct: a?.weight_pct ?? 0 }));
+                          setForm(f => ({ ...f, assessment_id: e.target.value, total_marks: a?.total_marks ?? 0 }));
                         } else {
                           const a = assignments.find(a => a.id === e.target.value);
-                          setForm(f => ({ ...f, assignment_id: e.target.value, weight_pct: a?.weight_pct ?? 0 }));
+                          setForm(f => ({ ...f, assignment_id: e.target.value, total_marks: a?.max_score ?? 0 }));
                         }
                       }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       disabled={!offeringForForm}
                     >
                       <option value="">Select…</option>
-                      {(form.item_type === 'assessment' ? assessments : assignments).map((a: any) => (
-                        <option key={a.id} value={a.id}>{a.title} ({a.weight_pct}%)</option>
-                      ))}
+                      {(form.item_type === 'assessment'
+                        ? assessments.map((a: any) => <option key={a.id} value={a.id}>{a.title} (/{a.total_marks})</option>)
+                        : assignments.map((a: any) => <option key={a.id} value={a.id}>{a.title} (/{a.max_score})</option>)
+                      )}
                     </select>
                   </div>
                 </>
@@ -421,33 +362,21 @@ export default function GradebookItemsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Raw Score</label>
                   <input
-                    type="number" min={0} step={0.5}
+                    type="number" min={0} step={0.5} max={form.total_marks}
                     value={form.raw_score}
-                    onChange={e => setForm(f => ({ ...f, raw_score: Number(e.target.value), weighted_score: calcWeightedScore(Number(e.target.value), f.weight_pct) }))}
+                    onChange={e => setForm(f => ({ ...f, raw_score: Number(e.target.value) }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight %</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Marks</label>
                   <input
-                    type="number" min={0} max={100} step={0.5}
-                    value={form.weight_pct}
-                    onChange={e => setForm(f => ({ ...f, weight_pct: Number(e.target.value), weighted_score: calcWeightedScore(f.raw_score, Number(e.target.value)) }))}
+                    type="number" min={1} step={1}
+                    value={form.total_marks}
+                    onChange={e => setForm(f => ({ ...f, total_marks: Number(e.target.value) }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
-              </div>
-              <div className="text-sm text-gray-500">Weighted score: <strong>{calcWeightedScore(form.raw_score, form.weight_pct)}</strong></div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Letter Grade</label>
-                <select
-                  value={form.letter_grade ?? ''}
-                  onChange={e => setForm(f => ({ ...f, letter_grade: e.target.value || null }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">Not set</option>
-                  {LETTER_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
               </div>
               <div className="flex items-center gap-2">
                 <input

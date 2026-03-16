@@ -14,8 +14,8 @@ type CourseRow = {
   creditHours:     number;
   termName:        string;
   academicYear:    string;
-  finalScore:      number | null;   // 0–100 weighted percentage
-  finalGrade:      string | null;   // derived letter grade
+  finalScore:      number | null;
+  finalGrade:      string | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -28,19 +28,18 @@ function deriveGrade(score: number | null): string | null {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function GradeReportsPage() {
-  const [studentName,  setStudentName]  = useState('');
-  const [studentNo,    setStudentNo]    = useState<string | null>(null);
-  const [courses,      setCourses]      = useState<CourseRow[]>([]);
-  const [loading,      setLoading]      = useState(true);
+  const [studentName,   setStudentName]   = useState('');
+  const [studentNo,     setStudentNo]     = useState<string | null>(null);
+  const [courses,       setCourses]       = useState<CourseRow[]>([]);
+  const [loading,       setLoading]       = useState(true);
   const [academicYears, setAcademicYears] = useState<string[]>([]);
-  const [selectedYear,  setSelectedYear]  = useState<string>('');
+  const [selectedYear,  setSelectedYear]  = useState<string>('all');
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       const supabase = createClient();
 
-      // ── Auth ──────────────────────────────────────────────────────────────
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) { setLoading(false); return; }
 
@@ -56,7 +55,6 @@ export default function GradeReportsPage() {
         `${(appUser as any).first_name ?? ''} ${(appUser as any).last_name ?? ''}`.trim() || 'Student'
       );
 
-      // ── Student number ─────────────────────────────────────────────────────
       const { data: sp } = await supabase
         .from('student_profiles')
         .select('student_no')
@@ -64,8 +62,7 @@ export default function GradeReportsPage() {
         .maybeSingle();
       setStudentNo((sp as any)?.student_no ?? null);
 
-      // ── Enrollments with course + term info ───────────────────────────────
-      const { data: rows } = await supabase
+      const { data: rows, error: enrollErr } = await supabase
         .from('enrollments')
         .select(`
           id, final_score, final_grade,
@@ -78,16 +75,17 @@ export default function GradeReportsPage() {
         `)
         .eq('student_id', uid)
         .in('status', ['active', 'completed'])
-        .order('created_at', { ascending: false });
+        .order('enrolled_at', { ascending: false });
+
+      if (enrollErr) console.error('[GradeReports] enrollments query error:', enrollErr);
+      console.log('[GradeReports] rows:', rows?.length, rows);
 
       const mapped: CourseRow[] = ((rows ?? []) as any[]).map(r => {
-        const o    = r.course_offerings ?? {};
-        const c    = o.courses ?? {};
-        const t    = o.academic_terms ?? {};
+        const o     = r.course_offerings ?? {};
+        const c     = o.courses ?? {};
+        const t     = o.academic_terms ?? {};
         const score = r.final_score ?? null;
-        const grade = r.final_grade
-          ? r.final_grade       // DB stored grade (A/B/C/D/F/I)
-          : deriveGrade(score); // derived from score for more granularity
+        const grade = r.final_grade ? r.final_grade : deriveGrade(score);
         return {
           enrollmentId: r.id,
           offeringId:   r.offering_id,
@@ -103,8 +101,6 @@ export default function GradeReportsPage() {
 
       setCourses(mapped);
 
-      // ── Academic year list (unique, sorted desc) ──────────────────────────
-      // Include '—' as a fallback so courses still show even if year label is missing
       const years = [...new Set(mapped.map(r => r.academicYear))].sort().reverse();
       setAcademicYears(years);
       setSelectedYear(years[0] ?? 'all');
@@ -127,18 +123,23 @@ export default function GradeReportsPage() {
     ? Math.round((totalQualityPts / totalGradedCredits) * 100) / 100
     : null;
 
-  const gpaFormula = graded.length > 0
-    ? `(${graded.map(c => getGpaPoints(c.finalGrade!).toFixed(1)).join('+')}) / ${graded.length} = ${gpa?.toFixed(2)}`
+  const allSameCredits = graded.length > 0 && graded.every(c => c.creditHours === graded[0].creditHours);
+  const gpaLabel = graded.length > 0
+    ? allSameCredits
+      ? `GPA (${graded.length} graded × ${graded[0].creditHours} credits each):`
+      : `GPA (${graded.length} graded, varying credits):`
     : null;
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const gpaFormula = graded.length > 0
+    ? `(${graded.map(c => getGpaPoints(c.finalGrade!).toFixed(1)).join(' + ')}) / ${graded.length} = ${gpa?.toFixed(2)}`
+    : null;
 
   if (loading) return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-10 space-y-4 animate-pulse">
-        <div className="h-7 bg-gray-200 rounded w-48" />
-        <div className="h-5 bg-gray-100 rounded w-72" />
-        <div className="h-64 bg-gray-100 rounded-xl" />
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="max-w-3xl mx-auto px-6 py-10 space-y-3 animate-pulse">
+        <div className="h-7 bg-gray-200 rounded w-64" />
+        <div className="h-4 bg-gray-100 rounded w-40" />
+        <div className="h-72 bg-gray-100 rounded-xl mt-4" />
       </div>
     </div>
   );
@@ -147,7 +148,7 @@ export default function GradeReportsPage() {
     <div className="flex-1 overflow-y-auto bg-gray-50">
       <div className="max-w-3xl mx-auto px-6 py-8">
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
+        {/* ── Header ────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -190,36 +191,34 @@ export default function GradeReportsPage() {
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+
             {/* Column headers */}
-            <div className="grid grid-cols-[1fr_80px_72px_72px] gap-x-3 px-5 py-3 border-b-2 border-gray-300 bg-gray-50">
-              <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Course</span>
-              <span className="text-xs font-bold text-gray-700 uppercase tracking-wider text-right">Score</span>
-              <span className="text-xs font-bold text-gray-700 uppercase tracking-wider text-center">Grade</span>
-              <span className="text-xs font-bold text-gray-700 uppercase tracking-wider text-center">GPA Pts</span>
+            <div className="grid grid-cols-[1fr_88px_72px_72px] gap-x-3 px-5 py-3 border-b-2 border-gray-200 bg-gray-50">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Course</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Score</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider text-center">Grade</span>
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider text-center">GPA Pts</span>
             </div>
 
-            {/* Graded courses */}
-            <div className="divide-y divide-gray-50">
-              {[...graded, ...pending].map((row, idx) => {
-                const isGraded  = row.finalGrade != null;
-                const gpaPts    = isGraded ? getGpaPoints(row.finalGrade!) : null;
-                const isPending = !isGraded;
+            {/* Rows */}
+            <div className="divide-y divide-gray-100">
+              {[...graded, ...pending].map((row) => {
+                const isGraded = row.finalGrade != null;
+                const gpaPts   = isGraded ? getGpaPoints(row.finalGrade!) : null;
 
                 return (
                   <div
                     key={row.enrollmentId}
-                    className={`grid grid-cols-[1fr_80px_72px_72px] gap-x-3 px-5 py-3 items-center ${
-                      isPending ? 'opacity-65' : 'hover:bg-gray-50/60'
+                    className={`grid grid-cols-[1fr_88px_72px_72px] gap-x-3 px-5 py-3 items-center ${
+                      !isGraded ? 'opacity-60' : 'hover:bg-gray-50/70'
                     }`}
                   >
                     {/* Course name */}
                     <div className="min-w-0">
-                      <span className={`text-sm font-medium ${isPending ? 'text-gray-500' : 'text-gray-900'}`}>
+                      <span className={`text-sm font-medium ${!isGraded ? 'text-gray-500' : 'text-gray-900'}`}>
                         {row.courseTitle}
                       </span>
-                      <span className="ml-1.5 text-xs text-gray-400">
-                        ({row.creditHours} cr)
-                      </span>
+                      <span className="ml-1.5 text-xs text-gray-400">({row.creditHours} cr)</span>
                       <p className="text-[11px] text-gray-400 mt-0.5">{row.termName}</p>
                     </div>
 
@@ -241,14 +240,16 @@ export default function GradeReportsPage() {
 
                     {/* Grade */}
                     <div className="text-center">
-                      {isPending ? (
+                      {!isGraded ? (
                         <span className="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                           Pending
                         </span>
                       ) : (
                         <span className={`text-sm font-bold ${
-                          row.finalGrade === 'A'  || row.finalGrade === 'A-' ? 'text-green-700' :
-                          row.finalGrade === 'B+' || row.finalGrade === 'B'  || row.finalGrade === 'B-' ? 'text-blue-700' :
+                          row.finalGrade === 'A'  || row.finalGrade === 'A+' ? 'text-green-700' :
+                          row.finalGrade === 'A-'                             ? 'text-green-600' :
+                          row.finalGrade === 'B+' || row.finalGrade === 'B'  ? 'text-blue-700'  :
+                          row.finalGrade === 'B-'                             ? 'text-blue-600'  :
                           row.finalGrade === 'C+' || row.finalGrade === 'C'  ? 'text-amber-700' :
                           'text-red-600'
                         }`}>
@@ -278,21 +279,14 @@ export default function GradeReportsPage() {
             </div>
 
             {/* Divider before GPA */}
-            <div className="border-t-2 border-gray-300 mx-5" />
+            <div className="border-t-2 border-gray-200 mx-5" />
 
             {/* GPA summary */}
             <div className="px-5 py-4 bg-gray-50/60">
               {gpa != null ? (
                 <div className="space-y-1">
                   <p className="text-sm text-gray-700">
-                    <span className="font-semibold">GPA</span>
-                    <span className="text-gray-500 ml-1">
-                      ({graded.length} graded × {
-                        [...new Set(graded.map(c => c.creditHours))].length === 1
-                          ? `${graded[0].creditHours} credits each`
-                          : 'varying credits'
-                      }):
-                    </span>
+                    <span className="font-semibold">{gpaLabel}</span>
                   </p>
                   {gpaFormula && (
                     <p className="text-sm text-[#4c1d95] font-mono pl-4">
@@ -308,6 +302,7 @@ export default function GradeReportsPage() {
                 <p className="text-sm text-gray-400 italic">GPA will be available once courses are graded.</p>
               )}
             </div>
+
           </div>
         )}
 

@@ -15,7 +15,6 @@ type Assessment = {
   type: string;
   instructions: string | null;
   total_marks: number;
-  weight_pct: number | null;
   time_limit_mins: number | null;
   max_attempts: number;
   available_from: string | null;
@@ -156,7 +155,7 @@ export default function AssessmentTakingPage() {
 
       const { data: assess } = await supabase
         .from('assessments')
-        .select('id, title, type, instructions, total_marks, weight_pct, time_limit_mins, max_attempts, available_from, available_until, show_result, show_answers')
+        .select('id, title, type, instructions, total_marks, time_limit_mins, max_attempts, available_from, available_until, show_result, show_answers')
         .eq('id', assessmentId)
         .maybeSingle();
       if (!assess) { setErrorMsg('Assessment not found.'); setPageState('error'); return; }
@@ -476,10 +475,10 @@ export default function AssessmentTakingPage() {
     }).eq('id', attemptId);
 
     // ── Update gradebook if fully auto-graded ──────────────────────────────
-    if (!hasManual && !timedOut && finalScore != null && assessment.weight_pct != null) {
+    if (!hasManual && !timedOut && finalScore != null) {
       await updateGradebookItem(
         supabase, enrollmentId, userId, assessmentId, 'assessment',
-        finalScore, assessment.total_marks, assessment.weight_pct,
+        finalScore, assessment.total_marks, 0,
       );
     }
 
@@ -567,7 +566,6 @@ export default function AssessmentTakingPage() {
                   ['⏱ Time', assessment.time_limit_mins ? `${assessment.time_limit_mins} min` : 'No limit'],
                   ['📝 Marks', `${assessment.total_marks}`],
                   ['🔄 Attempts', `${existingAttempts} of ${assessment.max_attempts} used`],
-                  ['📊 Weight', assessment.weight_pct != null ? `${assessment.weight_pct}%` : '—'],
                 ].map(([label, val]) => (
                   <div key={label} className="bg-gray-50 rounded-xl px-4 py-3 text-center border border-gray-100">
                     <p className="text-xs text-gray-500 mb-0.5">{label}</p>

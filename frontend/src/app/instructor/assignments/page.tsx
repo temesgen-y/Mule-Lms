@@ -9,7 +9,7 @@ import Link from 'next/link';
 
 type Assignment = {
   id: string; offeringId: string; offeringLabel: string; title: string;
-  maxScore: number; weightPct: number; dueDate: string;
+  maxScore: number; dueDate: string;
   allowFiles: boolean; allowText: boolean; lateAllowed: boolean; status: string;
 };
 type OfferingOption = { id: string; label: string };
@@ -19,7 +19,7 @@ const STATUSES = ['draft', 'published', 'closed'];
 const STATUS_COLORS: Record<string, string> = { draft: 'text-gray-500', published: 'text-green-600', closed: 'text-amber-600' };
 const PAGE_SIZE = 10;
 const initialForm = {
-  offeringId: '', title: '', brief: '', maxScore: '100', weightPct: '0',
+  offeringId: '', title: '', brief: '', maxScore: '100',
   allowFiles: true, allowedTypes: '', maxFileMb: '10',
   allowText: false, dueDate: '', lateAllowed: false, latePenaltyPct: '0', status: 'draft',
 };
@@ -289,9 +289,9 @@ export default function InstructorAssignmentsPage() {
     const { data: ciData } = await supabase.from('course_instructors').select('offering_id').eq('instructor_id', userId);
     const offeringIds = (ciData ?? []).map((r: any) => r.offering_id);
     if (!offeringIds.length) { setAssignments([]); setLoading(false); return; }
-    const { data, error } = await supabase.from('assignments').select(`id,offering_id,title,max_score,weight_pct,due_date,allow_files,allow_text,late_allowed,status,course_offerings!fk_assignments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`).in('offering_id', offeringIds).order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('assignments').select(`id,offering_id,title,max_score,due_date,allow_files,allow_text,late_allowed,status,course_offerings!fk_assignments_offering(section_name,courses!fk_course_offerings_course(code,title),academic_terms!fk_course_offerings_term(academic_year_label,term_name,term_code))`).in('offering_id', offeringIds).order('created_at', { ascending: false });
     if (error) toast.error('Failed to load assignments.');
-    else setAssignments((data ?? []).map((r: any) => { const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {}; return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', maxScore: r.max_score ?? 100, weightPct: r.weight_pct ?? 0, dueDate: r.due_date ?? '', allowFiles: r.allow_files ?? true, allowText: r.allow_text ?? false, lateAllowed: r.late_allowed ?? false, status: r.status ?? 'draft' }; }));
+    else setAssignments((data ?? []).map((r: any) => { const o = r.course_offerings ?? {}; const c = o.courses ?? {}; const t = o.academic_terms ?? {}; return { id: r.id, offeringId: r.offering_id, offeringLabel: `${(c.code ?? '').toUpperCase()} — ${c.title ?? '—'} · ${[t.academic_year_label, t.term_name ?? t.term_code].filter(Boolean).join(' · ')} · Sec ${o.section_name ?? 'A'}`, title: r.title ?? '', maxScore: r.max_score ?? 100, dueDate: r.due_date ?? '', allowFiles: r.allow_files ?? true, allowText: r.allow_text ?? false, lateAllowed: r.late_allowed ?? false, status: r.status ?? 'draft' }; }));
     setLoading(false);
   }, [getCurrentUserId]);
 
@@ -307,7 +307,7 @@ export default function InstructorAssignmentsPage() {
 
   const openEditModal = useCallback((a: Assignment) => {
     setEditingId(a.id);
-    setForm({ offeringId: a.offeringId, title: a.title, brief: '', maxScore: String(a.maxScore), weightPct: String(a.weightPct), allowFiles: a.allowFiles, allowedTypes: '', maxFileMb: '10', allowText: a.allowText, dueDate: a.dueDate ? new Date(a.dueDate).toISOString().slice(0, 16) : '', lateAllowed: a.lateAllowed, latePenaltyPct: '0', status: a.status });
+    setForm({ offeringId: a.offeringId, title: a.title, brief: '', maxScore: String(a.maxScore), allowFiles: a.allowFiles, allowedTypes: '', maxFileMb: '10', allowText: a.allowText, dueDate: a.dueDate ? new Date(a.dueDate).toISOString().slice(0, 16) : '', lateAllowed: a.lateAllowed, latePenaltyPct: '0', status: a.status });
     setPendingFiles([]);
     setSubmitError('');
     setModalOpen(true);
@@ -387,7 +387,7 @@ export default function InstructorAssignmentsPage() {
       title: form.title.trim(),
       brief: briefHtml || '(no brief)',
       max_score: maxScore,
-      weight_pct: parseFloat(form.weightPct) || 0,
+      weight_pct: 0,
       allow_files: form.allowFiles,
       allowed_types: form.allowedTypes.trim() || null,
       max_file_mb: parseInt(form.maxFileMb, 10) || 10,
@@ -518,16 +518,10 @@ export default function InstructorAssignmentsPage() {
                   </div>
                 </div>
 
-                {/* 5. Max Score | Weight % */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Score</label>
-                    <input type="number" min={1} value={form.maxScore} onChange={e => setForm((f: any) => ({ ...f, maxScore: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Weight %</label>
-                    <input type="number" min={0} max={100} value={form.weightPct} onChange={e => setForm((f: any) => ({ ...f, weightPct: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
+                {/* 5. Max Score */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Max Score</label>
+                  <input type="number" min={1} value={form.maxScore} onChange={e => setForm((f: any) => ({ ...f, maxScore: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20" />
                 </div>
 
                 {/* 6. Due Date | Status */}
@@ -615,21 +609,19 @@ export default function InstructorAssignmentsPage() {
             <thead><tr className="border-b border-gray-200 bg-gray-50/80">
               <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Title</th>
               <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Score</th>
-              <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Weight</th>
               <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Due Date</th>
               <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Status</th>
               <th className="text-left text-sm font-semibold text-gray-700 px-5 py-3">Actions</th>
             </tr></thead>
             <tbody>
               {loading
-                ? <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-500">Loading...</td></tr>
+                ? <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-500">Loading...</td></tr>
                 : paginated.length === 0
-                  ? <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-500">No assignments found.</td></tr>
+                  ? <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-500">No assignments found.</td></tr>
                   : paginated.map(a => (
                     <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                       <td className="px-5 py-3"><div className="text-sm font-medium text-gray-900">{a.title}</div><div className="text-xs text-gray-500 line-clamp-1">{a.offeringLabel}</div></td>
                       <td className="px-5 py-3 text-sm text-gray-600">{a.maxScore}</td>
-                      <td className="px-5 py-3 text-sm text-gray-600">{a.weightPct}%</td>
                       <td className="px-5 py-3 text-sm text-gray-600">{a.dueDate ? new Date(a.dueDate).toLocaleDateString() : '—'}</td>
                       <td className="px-5 py-3"><span className={`text-sm font-medium capitalize ${STATUS_COLORS[a.status] ?? 'text-gray-500'}`}>{a.status}</span></td>
                       <td className="px-5 py-3">

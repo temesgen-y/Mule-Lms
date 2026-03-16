@@ -45,12 +45,13 @@ export default function StudentAssignmentsPage() {
       // Get active enrollments
       const { data: enrollments } = await supabase
         .from('enrollments')
-        .select('offering_id')
+        .select('id, offering_id')
         .eq('student_id', profile.id)
         .eq('status', 'active');
       if (!enrollments || enrollments.length === 0) { setLoading(false); return; }
 
       const offeringIds = enrollments.map((e: any) => e.offering_id);
+      const enrollmentIds = enrollments.map((e: any) => e.id);
 
       // Get assignments for those offerings
       const { data: asgns } = await supabase
@@ -76,15 +77,15 @@ export default function StudentAssignmentsPage() {
         .eq('student_id', profile.id)
         .in('assignment_id', asnIds);
 
-      // Get grades
+      // Get grades from gradebook_items (keyed by enrollment)
       const { data: grades } = await supabase
-        .from('grades')
-        .select('assignment_id, score')
-        .eq('student_id', profile.id)
+        .from('gradebook_items')
+        .select('assignment_id, raw_score')
+        .in('enrollment_id', enrollmentIds)
         .in('assignment_id', asnIds);
 
       const subMap = new Map((submissions || []).map((s: any) => [s.assignment_id, s]));
-      const gradeMap = new Map((grades || []).map((g: any) => [g.assignment_id, g.score]));
+      const gradeMap = new Map((grades || []).map((g: any) => [g.assignment_id, g.raw_score]));
 
       const result: Assignment[] = asgns.map((a: any) => {
         const sub = subMap.get(a.id);
