@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import DashboardSearch from './DashboardSearch';
+import DashboardSearch, { type SearchOffering } from './DashboardSearch';
 
 const COURSE_COLORS = [
   'bg-[#1e3a5f]',
@@ -290,7 +290,15 @@ export default async function InstructorDashboardPage() {
       </div>
 
       {/* Search */}
-      <DashboardSearch />
+      <DashboardSearch
+        offerings={offerings.map((o): SearchOffering => ({
+          id: o.id,
+          courseCode: o.courses?.code ?? '',
+          courseTitle: o.courses?.title ?? '',
+          termName: o.academic_terms?.term_name ?? '',
+          enrolledCount: o.enrolled_count ?? 0,
+        }))}
+      />
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
