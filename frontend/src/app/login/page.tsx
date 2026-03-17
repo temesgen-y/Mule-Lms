@@ -170,10 +170,174 @@ export default function LoginPage() {
     <main className="min-h-screen w-full flex flex-col md:flex-row flex-nowrap overflow-x-hidden">
       {/* Left: brand panel */}
       <div
-        className="flex-shrink-0 w-full md:w-[42%] md:min-w-[300px] min-h-[220px] md:min-h-screen flex flex-col justify-between py-8 md:py-12 px-6 md:px-10 text-white"
+        className="relative flex-shrink-0 w-full md:w-[42%] md:min-w-[300px] min-h-[220px] md:min-h-screen flex flex-col justify-between py-8 md:py-12 px-6 md:px-10 text-white overflow-hidden"
         style={{ backgroundColor: '#4c1d95' }}
       >
-        <div className="flex flex-col items-center text-center">
+        {/* University building — full-panel background illustration */}
+        <div className="absolute inset-0 flex items-end justify-center pointer-events-none select-none" aria-hidden>
+          <svg
+            viewBox="0 0 500 620"
+            className="w-full h-full"
+            preserveAspectRatio="xMidYMax meet"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ opacity: 0.38 }}
+          >
+            {/* Sky dots / stars */}
+            <circle cx="60" cy="40" r="2" fill="white" fillOpacity="0.6" />
+            <circle cx="130" cy="20" r="1.5" fill="white" fillOpacity="0.5" />
+            <circle cx="370" cy="30" r="2" fill="white" fillOpacity="0.5" />
+            <circle cx="440" cy="55" r="1.5" fill="white" fillOpacity="0.4" />
+            <circle cx="250" cy="15" r="1" fill="white" fillOpacity="0.4" />
+
+            {/* ══════════════ CLOCK TOWER ══════════════ */}
+            {/* Spire */}
+            <polygon points="250,30 244,80 256,80" fill="white" />
+            {/* Tower top block */}
+            <rect x="228" y="80" width="44" height="50" fill="white" rx="2" />
+            {/* Clock circle */}
+            <circle cx="250" cy="106" r="16" fill="#4c1d95" fillOpacity="0.55" stroke="white" strokeWidth="2.5" />
+            <line x1="250" y1="106" x2="250" y2="95" stroke="white" strokeWidth="2" strokeLinecap="round" />
+            <line x1="250" y1="106" x2="260" y2="106" stroke="white" strokeWidth="2" strokeLinecap="round" />
+            {/* Belfry arch */}
+            <rect x="238" y="82" width="24" height="20" fill="#4c1d95" fillOpacity="0.4" rx="12" />
+            {/* Tower base block */}
+            <rect x="218" y="128" width="64" height="60" fill="white" />
+            {/* Tower windows */}
+            <rect x="234" y="138" width="14" height="20" fill="#4c1d95" fillOpacity="0.45" rx="7" />
+            <rect x="252" y="138" width="14" height="20" fill="#4c1d95" fillOpacity="0.45" rx="7" />
+
+            {/* ══════════════ MAIN CENTRAL BUILDING ══════════════ */}
+            {/* Pediment (roof triangle) */}
+            <polygon points="100,310 250,230 400,310" fill="white" />
+            {/* Pediment inner detail */}
+            <polygon points="140,310 250,252 360,310" fill="#4c1d95" fillOpacity="0.25" />
+            {/* Frieze band */}
+            <rect x="100" y="308" width="300" height="18" fill="white" />
+
+            {/* Main body */}
+            <rect x="100" y="326" width="300" height="294" fill="white" />
+
+            {/* Columns — 6 across */}
+            <rect x="116" y="326" width="18" height="294" fill="#4c1d95" fillOpacity="0.2" rx="4" />
+            <rect x="152" y="326" width="18" height="294" fill="#4c1d95" fillOpacity="0.2" rx="4" />
+            <rect x="188" y="326" width="18" height="294" fill="#4c1d95" fillOpacity="0.2" rx="4" />
+            <rect x="294" y="326" width="18" height="294" fill="#4c1d95" fillOpacity="0.2" rx="4" />
+            <rect x="330" y="326" width="18" height="294" fill="#4c1d95" fillOpacity="0.2" rx="4" />
+            <rect x="366" y="326" width="18" height="294" fill="#4c1d95" fillOpacity="0.2" rx="4" />
+
+            {/* Column capitals (top decorations) */}
+            <rect x="112" y="322" width="26" height="6" fill="white" rx="1" />
+            <rect x="148" y="322" width="26" height="6" fill="white" rx="1" />
+            <rect x="184" y="322" width="26" height="6" fill="white" rx="1" />
+            <rect x="290" y="322" width="26" height="6" fill="white" rx="1" />
+            <rect x="326" y="322" width="26" height="6" fill="white" rx="1" />
+            <rect x="362" y="322" width="26" height="6" fill="white" rx="1" />
+
+            {/* Windows row 1 */}
+            <rect x="120" y="350" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="160" y="350" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="310" y="350" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="350" y="350" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            {/* Window arch tops */}
+            <ellipse cx="135" cy="350" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="175" cy="350" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="325" cy="350" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="365" cy="350" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+
+            {/* Windows row 2 */}
+            <rect x="120" y="400" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="160" y="400" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="310" y="400" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="350" y="400" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <ellipse cx="135" cy="400" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="175" cy="400" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="325" cy="400" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="365" cy="400" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+
+            {/* Windows row 3 */}
+            <rect x="120" y="450" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="160" y="450" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="310" y="450" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="350" y="450" width="30" height="28" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <ellipse cx="135" cy="450" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="175" cy="450" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="325" cy="450" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+            <ellipse cx="365" cy="450" rx="15" ry="7" fill="#4c1d95" fillOpacity="0.45" />
+
+            {/* Grand entrance arch door */}
+            <rect x="215" y="490" width="70" height="130" fill="#4c1d95" fillOpacity="0.5" rx="2" />
+            <ellipse cx="250" cy="490" rx="35" ry="18" fill="#4c1d95" fillOpacity="0.5" />
+            {/* Door frame */}
+            <rect x="213" y="488" width="74" height="134" fill="none" stroke="white" strokeWidth="3" rx="37" />
+
+            {/* Entry steps */}
+            <rect x="170" y="618" width="160" height="6" fill="white" fillOpacity="0.7" rx="1" />
+            <rect x="185" y="612" width="130" height="6" fill="white" fillOpacity="0.7" rx="1" />
+            <rect x="200" y="606" width="100" height="6" fill="white" fillOpacity="0.7" rx="1" />
+            <rect x="215" y="600" width="70" height="6" fill="white" fillOpacity="0.6" rx="1" />
+
+            {/* ══════════════ LEFT WING ══════════════ */}
+            {/* Left wing roof */}
+            <polygon points="0,360 100,310 100,380" fill="white" />
+            {/* Left wing body */}
+            <rect x="0" y="378" width="102" height="242" fill="white" />
+            {/* Left wing columns */}
+            <rect x="10" y="378" width="12" height="242" fill="#4c1d95" fillOpacity="0.2" rx="3" />
+            <rect x="40" y="378" width="12" height="242" fill="#4c1d95" fillOpacity="0.2" rx="3" />
+            <rect x="70" y="378" width="12" height="242" fill="#4c1d95" fillOpacity="0.2" rx="3" />
+            {/* Left wing windows */}
+            <rect x="14" y="398" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="44" y="398" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="14" y="432" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="44" y="432" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="14" y="466" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="44" y="466" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            {/* Left wing door */}
+            <rect x="37" y="540" width="30" height="80" fill="#4c1d95" fillOpacity="0.45" rx="15" />
+
+            {/* ══════════════ RIGHT WING ══════════════ */}
+            {/* Right wing roof */}
+            <polygon points="500,360 400,310 400,380" fill="white" />
+            {/* Right wing body */}
+            <rect x="398" y="378" width="102" height="242" fill="white" />
+            {/* Right wing columns */}
+            <rect x="408" y="378" width="12" height="242" fill="#4c1d95" fillOpacity="0.2" rx="3" />
+            <rect x="438" y="378" width="12" height="242" fill="#4c1d95" fillOpacity="0.2" rx="3" />
+            <rect x="468" y="378" width="12" height="242" fill="#4c1d95" fillOpacity="0.2" rx="3" />
+            {/* Right wing windows */}
+            <rect x="414" y="398" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="444" y="398" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="414" y="432" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="444" y="432" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="414" y="466" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            <rect x="444" y="466" width="22" height="20" fill="#4c1d95" fillOpacity="0.45" rx="3" />
+            {/* Right wing door */}
+            <rect x="433" y="540" width="30" height="80" fill="#4c1d95" fillOpacity="0.45" rx="15" />
+
+            {/* ══════════════ GROUND & TREES ══════════════ */}
+            <rect x="0" y="618" width="500" height="8" fill="white" fillOpacity="0.5" rx="2" />
+
+            {/* Left trees */}
+            <ellipse cx="30" cy="580" rx="22" ry="30" fill="white" fillOpacity="0.55" />
+            <ellipse cx="30" cy="565" rx="16" ry="22" fill="white" fillOpacity="0.45" />
+            <rect x="27" y="605" width="6" height="18" fill="white" fillOpacity="0.5" />
+
+            <ellipse cx="75" cy="590" rx="18" ry="24" fill="white" fillOpacity="0.45" />
+            <rect x="72" y="610" width="6" height="14" fill="white" fillOpacity="0.4" />
+
+            {/* Right trees */}
+            <ellipse cx="470" cy="580" rx="22" ry="30" fill="white" fillOpacity="0.55" />
+            <ellipse cx="470" cy="565" rx="16" ry="22" fill="white" fillOpacity="0.45" />
+            <rect x="467" y="605" width="6" height="18" fill="white" fillOpacity="0.5" />
+
+            <ellipse cx="425" cy="590" rx="18" ry="24" fill="white" fillOpacity="0.45" />
+            <rect x="422" y="610" width="6" height="14" fill="white" fillOpacity="0.4" />
+          </svg>
+        </div>
+
+        {/* Content above the building */}
+        <div className="relative z-10 flex flex-col items-center text-center">
           <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-amber-400 flex items-center justify-center mb-4 md:mb-6 flex-shrink-0">
             <svg className="w-6 h-6 md:w-8 md:h-8 text-amber-900" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path d="M12 14l9-5-9-5-9 5 9 5z" />
@@ -186,12 +350,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="rounded-xl bg-white/10 backdrop-blur px-4 py-3 md:px-5 md:py-4 md:mx-4 flex-shrink-0 mt-4 md:mt-0">
-          <p className="text-sm font-semibold text-white mb-2">Single sign-in</p>
-          <p className="text-sm text-white/90">
-            One sign-in for everyone. You’ll be redirected by role: admin → admin dashboard, instructor → instructor dashboard, student → student dashboard.
-          </p>
-        </div>
+        <div className="relative z-10 h-16 md:h-20" />
       </div>
 
       {/* Right: form panel */}
@@ -249,7 +408,6 @@ export default function LoginPage() {
             <>
           <h2 className="text-2xl font-bold text-gray-800">Welcome back</h2>
           <p className="mt-1 text-gray-500 text-sm">Sign in to your account to continue</p>
-          <p className="mt-0.5 text-gray-400 text-xs">Redirect by role: admin → admin dashboard, instructor → instructor dashboard, student → student dashboard.</p>
 
           <form onSubmit={handleSignIn} className="mt-8 space-y-5">
             <div>
