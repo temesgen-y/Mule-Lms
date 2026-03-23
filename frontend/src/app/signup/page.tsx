@@ -14,6 +14,8 @@ import { signupSchema, type SignupFormData } from './schema';
 import { createClient } from '@/lib/supabase/client';
 import { completeStudentSignup } from './actions';
 import { toast } from 'sonner';
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
+import { validatePasswordPolicy } from '@/lib/security/password';
 
 const SELECT_STYLE =
   'w-full pl-3.5 pr-10 py-2.5 border border-gray-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-[#4c1d95] focus:border-[#4c1d95] bg-white appearance-none cursor-pointer';
@@ -49,6 +51,7 @@ export default function SignUpPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -63,6 +66,12 @@ export default function SignUpPage() {
     },
   });
 
+  // Watch fields needed for the strength meter and identifier checks
+  const watchedPassword  = watch('password');
+  const watchedFirstName = watch('firstName');
+  const watchedLastName  = watch('lastName');
+  const watchedEmail     = watch('email');
+
   const onSubmit = async (data: SignupFormData) => {
     setSubmitError('');
     const supabase = createClient();
@@ -70,6 +79,14 @@ export default function SignUpPage() {
     const email = data.email.trim().toLowerCase();
     if (!email) {
       setSubmitError('Email is required.');
+      return;
+    }
+
+    // Full policy check including identifier-in-password detection (needs form values)
+    const userInputs = [email, data.firstName.trim(), data.lastName.trim()].filter(Boolean);
+    const policyResult = validatePasswordPolicy(data.password, userInputs);
+    if (!policyResult.valid) {
+      setSubmitError(policyResult.errors[0]);
       return;
     }
 
@@ -269,6 +286,12 @@ export default function SignUpPage() {
             {errors.password && (
               <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
             )}
+            {/* Real-time strength meter and policy checklist */}
+            <PasswordStrengthMeter
+              password={watchedPassword}
+              userInputs={[watchedEmail, watchedFirstName, watchedLastName]}
+              showBreachCheck
+            />
           </div>
 
           <div>

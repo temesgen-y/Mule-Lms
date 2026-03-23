@@ -96,7 +96,14 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL?.trim() ||
       request.headers.get('origin') ||
       request.nextUrl.origin;
-    const inviteUrl = `${appOrigin.replace(/\/$/, '')}/login`;
+    const baseOrigin = appOrigin.replace(/\/$/, '');
+
+    // Generate a single-use invite token for the /setup-password page.
+    // We store this in instructor_invites so we can validate it ourselves
+    // (expiry, single-use enforcement, identifier-aware password policy).
+    const crypto = await import('crypto');
+    const inviteToken = crypto.randomUUID();
+    const setupPasswordUrl = `${baseOrigin}/setup-password?token=${inviteToken}`;
 
     const {
       data: inviteData,
@@ -106,7 +113,9 @@ export async function POST(request: NextRequest) {
         first_name: data.firstName,
         last_name: data.lastName,
       },
-      redirectTo: inviteUrl,
+      // Supabase redirects the user here after they click the invite email link.
+      // Our setup-password page handles both the Supabase hash token and our custom token.
+      redirectTo: setupPasswordUrl,
     });
 
     if (inviteError) {
@@ -225,10 +234,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── Store the custom invite token ────────────────────────────────────────
+    // WHY NOT upsert(onConflict:'email'): Supabase's upsert resolves conflicts
+    // against full unique constraints only. Our partial unique index
+    // (WHERE used = false) is not usable as an ON CONFLICT target via the JS
+    // client. Instead we: 1) invalidate old pending invites, 2) plain INSERT.
+
+    // 1. Invalidate any existing unused invite for this email so there is only
+    //    one active token at a time.
+    await admin
+      .from('instructor_invites')
+      .update({ used: true, used_at: new Date().toISOString() })
+      .eq('email', data.email)
+      .eq('used', false);
+
+    // 2. Insert the fresh invite token.
+    const { error: tokenError } = await admin.from('instructor_invites').insert({
+      email:        data.email,
+      token:        inviteToken,
+      auth_user_id: invitedAuthUserId,
+      invited_by:   createdByUserId,
+      expires_at:   new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      used:         false,
+    });
+
+    if (tokenError) {
+      // Log but don't fail — the Supabase invite email was already sent.
+      // The admin can copy setupPasswordUrl from the response and share it manually.
+      console.error('[invite] Failed to store invite token:', tokenError.message, tokenError.code);
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Instructor invited. They will receive an email to set their password and can then sign in.',
+      message: tokenError
+        ? 'Instructor invited via email. Note: the custom setup-password link could not be stored (see server logs). Share the setupPasswordUrl with the instructor manually.'
+        : 'Instructor invited. They will receive an email with a link to set their password.',
       userId,
+      setupPasswordUrl,
+      ...(tokenError ? { tokenStoreError: tokenError.message } : {}),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

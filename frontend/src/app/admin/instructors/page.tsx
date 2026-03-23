@@ -15,6 +15,8 @@ type Instructor = {
 
 const PAGE_SIZE = 10;
 
+type Department = { id: string; name: string };
+
 const initialForm = {
   firstName: '',
   lastName: '',
@@ -41,6 +43,8 @@ export default function AdminInstructorsPage() {
   const [form, setForm] = useState(initialForm);
   const [submitError, setSubmitError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [deptLoading, setDeptLoading] = useState(false);
 
   const fetchInstructors = useCallback(async () => {
     setLoading(true);
@@ -85,10 +89,20 @@ export default function AdminInstructorsPage() {
     fetchInstructors();
   }, [fetchInstructors]);
 
-  const openModal = useCallback(() => {
+  const openModal = useCallback(async () => {
     setForm(initialForm);
     setSubmitError('');
     setModalOpen(true);
+    // Fetch active departments for the dropdown
+    setDeptLoading(true);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('departments')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name');
+    setDepartments((data as Department[]) ?? []);
+    setDeptLoading(false);
   }, []);
 
   const closeModal = useCallback(() => {
@@ -256,10 +270,39 @@ export default function AdminInstructorsPage() {
                 </div>
                 <div>
                   <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
-                  <input id="department" type="text" required value={form.department}
-                    onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
+                  {deptLoading ? (
+                    <div className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-400 text-sm">
+                      Loading departments…
+                    </div>
+                  ) : departments.length === 0 ? (
+                    <div className="space-y-1">
+                      <input id="department" type="text" required value={form.department}
+                        onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                        placeholder="No departments found — type manually"
+                        className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                      <p className="text-xs text-amber-600">
+                        No active departments found.{' '}
+                        <a href="/admin/departments" className="underline font-medium" target="_blank" rel="noreferrer">
+                          Add departments first
+                        </a>{' '}
+                        for the dropdown to appear.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      id="department"
+                      required
+                      value={form.department}
+                      onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      <option value="">Select department…</option>
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">Title</label>
